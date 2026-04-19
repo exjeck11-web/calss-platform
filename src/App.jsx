@@ -4,8 +4,8 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, onSnapshot, addDoc, serverTimestamp, doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { 
-  Calendar, Utensils, Sun, Bell, User, LogOut, Gift, Clock, 
-  FileText, Image as ImageIcon, PlusCircle, Upload, X, Camera
+  Calendar, Utensils, Bell, User, LogOut, Gift, Clock, 
+  PlusCircle, Upload, X, Camera
 } from 'lucide-react';
 
 // --- [Firebase 초기화: 선생님 프로젝트 연결] ---
