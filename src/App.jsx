@@ -511,7 +511,7 @@ export default function App() {
               <a href="http://www.xn--s39aj90b0nb2xw6xh.kr/" target="_blank" rel="noopener noreferrer" className="flex flex-col items-center justify-center w-full py-8 bg-indigo-50 border border-indigo-100 rounded-2xl group hover:bg-indigo-100 transition shadow-sm">
                 <div className="bg-white p-3 rounded-full shadow-sm mb-3 group-hover:scale-110 transition"><ExternalLink className="text-indigo-600 w-6 h-6" /></div>
                 <span className="font-bold text-indigo-700">시간표 확인하기</span>
-                <span className="text-xs text-indigo-400 mt-1">(컴시간 알리미로 연결됩니다)</span>
+                <span className="text-xs text-indigo-400 mt-1">(학교코드 : 37916)</span>
               </a>
             </div>
 
