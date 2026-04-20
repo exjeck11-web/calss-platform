@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, onSnapshot, addDoc, serverTimestamp, doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, addDoc, serverTimestamp, doc, getDoc, getDocs, setDoc, deleteDoc } from 'firebase/firestore';
 import { 
   Calendar, 
   Utensils, 
@@ -18,7 +18,8 @@ import {
   X,
   Camera,
   ExternalLink,
-  BookOpen
+  BookOpen,
+  Users
 } from 'lucide-react';
 
 // --- [선생님 학급 명단 데이터 (수정 금지! 완벽하게 보존했습니다)] ---
@@ -60,7 +61,7 @@ for (let i = 1; i <= 26; i++) {
   STUDENT_DATA.push({ id: studentId, name: name, birthMonth: month, birthDay: day });
 }
 
-// 초기 유저 정보 생성
+// 초기 유저 권한 정보 생성
 const INITIAL_USERS = {
   'teacher': { id: 'teacher', name: '담임선생님', role: 'teacher', password: 'teacher', isFirstLogin: false }
 };
@@ -70,7 +71,9 @@ STUDENT_DATA.forEach(student => {
     id: student.id, 
     name: student.name, 
     role: 'student', 
-    isManager: student.id === '10207', 
+    canPostAssessment: student.id === '10207' || student.id === '10214', // 가은, 현성: 수행평가 작성
+    canPostOther: student.id === '10207' || student.id === '10209' || student.id === '10214', // 가은, 수하, 현성: 기타 공지 작성
+    canPostPhoto: student.id === '10207' || student.id === '10209', // 가은, 수하: 사진첩 업로드
     password: '1234', 
     isFirstLogin: true 
   };
@@ -101,8 +104,14 @@ export default function App() {
   const [showPasswordReset, setShowPasswordReset] = useState(false);
   const [newPassword, setNewPassword] = useState('');
 
-  // 탭 상태 (알림장 vs 사진첩)
+  // 선생님 전용: 학생 관리 모달 상태
+  const [isStudentManageModalOpen, setIsStudentManageModalOpen] = useState(false);
+  const [allUsers, setAllUsers] = useState([]);
+  const [resetMessage, setResetMessage] = useState('');
+
+  // 탭 및 카테고리 상태
   const [activeTab, setActiveTab] = useState('notice');
+  const [noticeCategoryFilter, setNoticeCategoryFilter] = useState('all');
 
   // Firebase 및 데이터 상태
   const [firebaseUser, setFirebaseUser] = useState(null);
@@ -119,6 +128,7 @@ export default function App() {
   // 작성 폼 상태
   const [newTitle, setNewTitle] = useState('');
   const [newContent, setNewContent] = useState('');
+  const [newNoticeCategory, setNewNoticeCategory] = useState('teacher');
   const [selectedFile, setSelectedFile] = useState(null);
   const [filePreviewUrl, setFilePreviewUrl] = useState(null);
   const [fileType, setFileType] = useState('text');
@@ -158,7 +168,7 @@ export default function App() {
     fetchMeals();
   }, []);
 
-  // --- [2. Firebase 인증 및 실시간 데이터 (알림장, 사진첩) 연동] ---
+  // --- [2. Firebase 인증 및 실시간 데이터 연동] ---
   useEffect(() => {
     const initAuth = async () => {
       try { await signInAnonymously(auth); } 
@@ -173,7 +183,7 @@ export default function App() {
   useEffect(() => {
     if (!firebaseUser) return;
 
-    // 공지사항 실시간 불러오기
+    // 공지사항 불러오기
     const noticesRef = collection(db, 'notices');
     const unsubNotices = onSnapshot(noticesRef, (snapshot) => {
       const loadedNotices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -181,7 +191,7 @@ export default function App() {
       setNotices(loadedNotices);
     });
 
-    // 사진첩 실시간 불러오기
+    // 사진첩 불러오기
     const galleryRef = collection(db, 'gallery');
     const unsubGallery = onSnapshot(galleryRef, (snapshot) => {
       const loadedPhotos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -192,7 +202,43 @@ export default function App() {
     return () => { unsubNotices(); unsubGallery(); };
   }, [firebaseUser]);
 
-  // --- [3. 이미지 용량 압축 마법사] ---
+  // --- [선생님 전용: 학생 목록 불러오기 & 비밀번호 초기화] ---
+  const loadAllUsersForTeacher = async () => {
+    if (currentUser?.role !== 'teacher') return;
+    try {
+      const snap = await getDocs(collection(db, 'users'));
+      const dbUsers = {};
+      snap.forEach(doc => { dbUsers[doc.id] = doc.data(); });
+      
+      // DB에 없으면 초기 비밀번호(1234) 상태로 보여주기 위해 합침
+      const merged = Object.keys(INITIAL_USERS)
+        .filter(id => id !== 'teacher')
+        .map(id => dbUsers[id] || INITIAL_USERS[id]);
+      
+      setAllUsers(merged.sort((a,b) => a.id.localeCompare(b.id)));
+      setIsStudentManageModalOpen(true);
+      setResetMessage('');
+    } catch(e) {
+      console.error(e);
+    }
+  };
+
+  const resetStudentPassword = async (studentId) => {
+    try {
+      const targetUser = allUsers.find(u => u.id === studentId);
+      const updatedUser = { ...targetUser, password: '1234', isFirstLogin: true };
+      
+      await setDoc(doc(db, 'users', studentId), updatedUser);
+      
+      setAllUsers(prev => prev.map(u => u.id === studentId ? updatedUser : u));
+      setResetMessage(`${targetUser.name} 학생의 비밀번호가 1234로 초기화되었습니다.`);
+      setTimeout(() => setResetMessage(''), 3000);
+    } catch(e) {
+      setResetMessage('초기화에 실패했습니다.');
+    }
+  };
+
+  // --- [이미지 압축 마법사] ---
   const compressImage = (file) => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -221,12 +267,26 @@ export default function App() {
     });
   };
 
-  // --- [4. 사용자 상호작용 함수들] ---
+  // --- [사용자 상호작용 함수들] ---
+  const openNoticeModal = () => {
+    if (currentUser?.role === 'teacher') setNewNoticeCategory('teacher');
+    else if (currentUser?.canPostAssessment) setNewNoticeCategory('assessment');
+    else if (currentUser?.canPostOther) setNewNoticeCategory('other');
+    
+    setIsNoticeModalOpen(true);
+  };
+
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
+    if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
+      setSubmitError('이미지 또는 PDF 파일만 업로드 가능합니다.');
+      return;
+    }
+
     setSelectedFile(file);
+    setSubmitError('');
 
     if (file.type.startsWith('image/')) {
       setFileType('image');
@@ -234,12 +294,9 @@ export default function App() {
       const compressedBase64 = await compressImage(file);
       setFilePreviewUrl(compressedBase64);
       setIsCompressing(false);
-    } else if (file.type === 'application/pdf') {
+    } else {
       setFileType('pdf');
       setFilePreviewUrl(file.name); 
-    } else {
-      alert('이미지 또는 PDF 파일만 업로드 가능합니다.');
-      closeModal();
     }
   };
 
@@ -252,6 +309,7 @@ export default function App() {
     try {
       await addDoc(collection(db, 'notices'), {
         title: newTitle, content: newContent, type: fileType,
+        category: newNoticeCategory,
         date: new Date().toISOString().split('T')[0], 
         createdAt: serverTimestamp(),
         attachmentUrl: filePreviewUrl || null,
@@ -289,7 +347,9 @@ export default function App() {
       await deleteDoc(doc(db, collectionName, itemToDelete.id));
       setItemToDelete(null);
       setSelectedItem(null);
-    } catch (error) { alert("삭제에 실패했습니다."); }
+    } catch (error) { 
+      setItemToDelete(null); 
+    }
   };
 
   const closeModal = () => {
@@ -330,10 +390,17 @@ export default function App() {
     try {
       const updatedUser = { ...currentUser, password: newPassword, isFirstLogin: false };
       await setDoc(doc(db, 'users', currentUser.id), updatedUser);
-      setCurrentUser(updatedUser);
+      
+      // 재로그인 유도
+      setCurrentUser(null);
+      setLoginId('');
+      setLoginPw('');
       setShowPasswordReset(false);
-      alert('비밀번호가 변경되었습니다!');
-    } catch (error) { alert('비밀번호 변경 실패'); }
+      setLoginError('✅ 비밀번호가 변경되었습니다. 새 비밀번호로 다시 로그인해주세요.');
+    } catch (error) { 
+      setLoginError('비밀번호 변경 실패');
+      setShowPasswordReset(false);
+    }
   };
 
   const getUpcomingBirthdays = () => {
@@ -397,6 +464,13 @@ export default function App() {
   const todayDate = new Date();
   const formattedToday = `${todayDate.getFullYear()}년 ${todayDate.getMonth() + 1}월 ${todayDate.getDate()}일 ${['일', '월', '화', '수', '목', '금', '토'][todayDate.getDay()]}요일`;
 
+  // 필터링된 공지사항 목록
+  const filteredNotices = notices.filter(notice => 
+    noticeCategoryFilter === 'all' || 
+    notice.category === noticeCategoryFilter || 
+    (!notice.category && noticeCategoryFilter === 'teacher') 
+  );
+
   return (
     <div className="min-h-screen bg-[#FDFBF7] text-slate-800 font-sans pb-10">
       <header className="bg-white shadow-sm sticky top-0 z-10">
@@ -416,7 +490,15 @@ export default function App() {
             </div>
             <div className="flex items-center space-x-2">
               <span className="text-sm font-semibold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full">{currentUser.name}</span>
-              <button onClick={() => { setCurrentUser(null); setLoginId(''); setLoginPw(''); }} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition"><LogOut className="w-5 h-5" /></button>
+              
+              {/* 선생님 전용: 학생 관리 모달 오픈 버튼 */}
+              {currentUser.role === 'teacher' && (
+                 <button onClick={loadAllUsersForTeacher} className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-full transition" title="학생 계정 관리">
+                   <Users className="w-5 h-5" />
+                 </button>
+              )}
+
+              <button onClick={() => { setCurrentUser(null); setLoginId(''); setLoginPw(''); }} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition" title="로그아웃"><LogOut className="w-5 h-5" /></button>
             </div>
           </div>
         </div>
@@ -449,22 +531,38 @@ export default function App() {
               <>
                 <div className="flex justify-between items-center mb-2">
                   <h2 className="text-lg font-bold flex items-center"><Bell className="w-5 h-5 mr-2 text-blue-500" /> 우리학급 알림장</h2>
-                  {(currentUser.role === 'teacher' || currentUser.isManager) && (
-                    <button onClick={() => setIsNoticeModalOpen(true)} className="flex items-center text-sm bg-blue-500 text-white px-3 py-1.5 rounded-lg hover:bg-blue-600 transition shadow-sm">
+                  {(currentUser.role === 'teacher' || currentUser.canPostAssessment || currentUser.canPostOther) && (
+                    <button onClick={openNoticeModal} className="flex items-center text-sm bg-blue-500 text-white px-3 py-1.5 rounded-lg hover:bg-blue-600 transition shadow-sm">
                       <PlusCircle className="w-4 h-4 mr-1" /> 공지 작성
                     </button>
                   )}
                 </div>
+
+                {/* --- 공지사항 카테고리 필터 버튼 --- */}
+                <div className="flex space-x-2 mb-4 overflow-x-auto pb-2" style={{scrollbarWidth: 'none'}}>
+                  <button onClick={() => setNoticeCategoryFilter('all')} className={`px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition ${noticeCategoryFilter === 'all' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>전체</button>
+                  <button onClick={() => setNoticeCategoryFilter('teacher')} className={`px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition ${noticeCategoryFilter === 'teacher' ? 'bg-blue-500 text-white shadow-md' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}>선생님 공지</button>
+                  <button onClick={() => setNoticeCategoryFilter('assessment')} className={`px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition ${noticeCategoryFilter === 'assessment' ? 'bg-pink-500 text-white shadow-md' : 'bg-pink-50 text-pink-600 hover:bg-pink-100'}`}>수행평가</button>
+                  <button onClick={() => setNoticeCategoryFilter('other')} className={`px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition ${noticeCategoryFilter === 'other' ? 'bg-orange-500 text-white shadow-md' : 'bg-orange-50 text-orange-600 hover:bg-orange-100'}`}>기타 공지</button>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {notices.map((notice) => (
+                  {filteredNotices.map((notice) => (
                     <div key={notice.id} onClick={() => setSelectedItem(notice)} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition cursor-pointer flex flex-col justify-between group">
                       <div>
                         <div className="flex justify-between items-start mb-3">
-                          <span className={`text-xs font-bold px-2 py-1 rounded-md ${notice.type === 'pdf' ? 'bg-red-100 text-red-600' : notice.type === 'image' ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-600'}`}>
-                            {notice.type === 'pdf' ? <FileText className="inline w-3 h-3 mr-1"/> : null}
-                            {notice.type === 'image' ? <ImageIcon className="inline w-3 h-3 mr-1"/> : null}
-                            {notice.type.toUpperCase()}
-                          </span>
+                          <div className="flex space-x-2">
+                            {/* 카테고리 뱃지 */}
+                            <span className={`text-xs font-bold px-2 py-1 rounded-md ${notice.category === 'assessment' ? 'bg-pink-100 text-pink-600' : notice.category === 'other' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>
+                              {notice.category === 'assessment' ? '수행평가' : notice.category === 'other' ? '기타 공지' : '선생님 공지'}
+                            </span>
+                            {/* 파일 타입 뱃지 */}
+                            <span className={`text-xs font-bold px-2 py-1 rounded-md ${notice.type === 'pdf' ? 'bg-red-100 text-red-600' : notice.type === 'image' ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-600'}`}>
+                              {notice.type === 'pdf' ? <FileText className="inline w-3 h-3 mr-1"/> : null}
+                              {notice.type === 'image' ? <ImageIcon className="inline w-3 h-3 mr-1"/> : null}
+                              {notice.type.toUpperCase()}
+                            </span>
+                          </div>
                         </div>
                         <h3 className="font-bold text-slate-800 mb-2 group-hover:text-blue-600 transition">{notice.title}</h3>
                         <p className="text-sm text-slate-500 line-clamp-2">{notice.content}</p>
@@ -472,7 +570,7 @@ export default function App() {
                       <div className="mt-4 text-xs text-slate-400 text-right">{notice.date}</div>
                     </div>
                   ))}
-                  {notices.length === 0 && <div className="col-span-full py-10 text-center text-slate-400 bg-white rounded-2xl border border-dashed">등록된 공지사항이 없습니다.</div>}
+                  {filteredNotices.length === 0 && <div className="col-span-full py-10 text-center text-slate-400 bg-white rounded-2xl border border-dashed">해당 카테고리의 공지사항이 없습니다.</div>}
                 </div>
               </>
             )}
@@ -482,9 +580,12 @@ export default function App() {
               <>
                 <div className="flex justify-between items-center mb-2">
                   <h2 className="text-lg font-bold flex items-center"><Camera className="w-5 h-5 mr-2 text-green-500" /> 추억 사진첩</h2>
-                  <button onClick={() => setIsPhotoModalOpen(true)} className="flex items-center text-sm bg-green-500 text-white px-3 py-1.5 rounded-lg hover:bg-green-600 transition shadow-sm">
-                    <Camera className="w-4 h-4 mr-1" /> 사진 올리기
-                  </button>
+                  {/* --- 선생님 및 권한 부여된 학생만 업로드 가능 --- */}
+                  {(currentUser.role === 'teacher' || currentUser.canPostPhoto) && (
+                    <button onClick={() => setIsPhotoModalOpen(true)} className="flex items-center text-sm bg-green-500 text-white px-3 py-1.5 rounded-lg hover:bg-green-600 transition shadow-sm">
+                      <Camera className="w-4 h-4 mr-1" /> 사진 올리기
+                    </button>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                   {photos.map((photo) => (
@@ -511,7 +612,7 @@ export default function App() {
               <a href="http://www.xn--s39aj90b0nb2xw6xh.kr/" target="_blank" rel="noopener noreferrer" className="flex flex-col items-center justify-center w-full py-8 bg-indigo-50 border border-indigo-100 rounded-2xl group hover:bg-indigo-100 transition shadow-sm">
                 <div className="bg-white p-3 rounded-full shadow-sm mb-3 group-hover:scale-110 transition"><ExternalLink className="text-indigo-600 w-6 h-6" /></div>
                 <span className="font-bold text-indigo-700">시간표 확인하기</span>
-                <span className="text-xs text-indigo-400 mt-1">(학교코드 : 37916)</span>
+                <span className="text-xs text-indigo-400 mt-1">(컴시간 알리미로 연결됩니다)</span>
               </a>
             </div>
 
@@ -535,12 +636,57 @@ export default function App() {
         </div>
       </main>
 
+      {/* 모달: 선생님 전용 학생 관리 (비밀번호 리셋) */}
+      {isStudentManageModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl w-full max-w-xl shadow-2xl p-6 max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-lg flex items-center"><Users className="w-5 h-5 mr-2 text-blue-500" /> 학생 계정 관리</h3>
+              <button onClick={() => setIsStudentManageModalOpen(false)} className="text-slate-500 hover:bg-slate-100 p-1 rounded-full transition"><X className="w-5 h-5"/></button>
+            </div>
+            
+            <div className="overflow-y-auto pr-2 space-y-2 flex-1">
+              {allUsers.map(user => (
+                 <div key={user.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="font-bold text-slate-700 flex items-center">
+                      <span className="w-12 text-slate-400 text-sm">{user.id.slice(3)}번</span>
+                      <span>{user.name}</span>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                       <span className="text-xs text-slate-400 w-24 text-right truncate">PW: {user.password}</span>
+                       <button 
+                          onClick={() => resetStudentPassword(user.id)} 
+                          className="bg-slate-800 text-white text-xs px-3 py-1.5 rounded-lg font-bold hover:bg-slate-700 transition"
+                       >
+                          1234로 초기화
+                       </button>
+                    </div>
+                 </div>
+              ))}
+            </div>
+            
+            {resetMessage && (
+               <div className="mt-4 p-3 bg-green-50 text-green-700 text-sm font-bold rounded-xl text-center">
+                 {resetMessage}
+               </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 모달: 공지사항 및 사진 상세보기 */}
       {selectedItem && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h3 className="font-bold text-lg">{selectedItem.title}</h3>
+              <div className="flex items-center space-x-2">
+                {selectedItem.category && (
+                   <span className={`text-xs font-bold px-2 py-1 rounded-md ${selectedItem.category === 'assessment' ? 'bg-pink-100 text-pink-600' : selectedItem.category === 'other' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>
+                     {selectedItem.category === 'assessment' ? '수행평가' : selectedItem.category === 'other' ? '기타 공지' : '선생님 공지'}
+                   </span>
+                )}
+                <h3 className="font-bold text-lg">{selectedItem.title}</h3>
+              </div>
               <button onClick={() => setSelectedItem(null)} className="p-1 rounded-full hover:bg-slate-200 transition"><X className="w-6 h-6 text-slate-500" /></button>
             </div>
             <div className="p-6 overflow-y-auto">
@@ -562,7 +708,7 @@ export default function App() {
               {selectedItem.content && <p className="text-slate-700 whitespace-pre-wrap leading-relaxed">{selectedItem.content}</p>}
             </div>
             <div className="p-4 bg-slate-50 border-t flex justify-between items-center">
-              {(currentUser.role === 'teacher' || currentUser.isManager || currentUser.id === selectedItem.uploaderId) ? (
+              {(currentUser.role === 'teacher' || currentUser.id === selectedItem.uploaderId) ? (
                 <button onClick={() => setItemToDelete(selectedItem)} className="text-red-500 font-semibold px-4 py-2 rounded-xl hover:bg-red-50 transition">삭제</button>
               ) : <div></div>}
               <button onClick={() => setSelectedItem(null)} className="bg-slate-800 text-white px-6 py-2 rounded-xl font-semibold hover:bg-slate-700 transition">확인</button>
@@ -585,7 +731,7 @@ export default function App() {
         </div>
       )}
 
-      {/* 모달: 알림장 새 공지 작성 */}
+      {/* 모달: 알림장 새 공지 작성 (권한별 카테고리 선택 처리) */}
       {isNoticeModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 max-h-[90vh] overflow-y-auto">
@@ -594,6 +740,29 @@ export default function App() {
               <button onClick={closeModal} className="text-slate-500 hover:bg-slate-100 p-1 rounded-full transition"><X className="w-5 h-5"/></button>
             </div>
             <form onSubmit={submitNewNotice} className="space-y-4">
+              
+              {/* --- 카테고리 선택 버튼들 --- */}
+              <div className="flex space-x-2">
+                {currentUser.role === 'teacher' && (
+                  <label className={`flex-1 text-center py-2.5 rounded-xl cursor-pointer font-bold text-sm transition ${newNoticeCategory === 'teacher' ? 'bg-blue-500 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                    <input type="radio" name="category" value="teacher" checked={newNoticeCategory === 'teacher'} onChange={(e) => setNewNoticeCategory(e.target.value)} className="hidden" />
+                    선생님 공지
+                  </label>
+                )}
+                {(currentUser.role === 'teacher' || currentUser.canPostAssessment) && (
+                  <label className={`flex-1 text-center py-2.5 rounded-xl cursor-pointer font-bold text-sm transition ${newNoticeCategory === 'assessment' ? 'bg-pink-500 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                    <input type="radio" name="category" value="assessment" checked={newNoticeCategory === 'assessment'} onChange={(e) => setNewNoticeCategory(e.target.value)} className="hidden" />
+                    수행평가
+                  </label>
+                )}
+                {(currentUser.role === 'teacher' || currentUser.canPostOther) && (
+                  <label className={`flex-1 text-center py-2.5 rounded-xl cursor-pointer font-bold text-sm transition ${newNoticeCategory === 'other' ? 'bg-orange-500 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                    <input type="radio" name="category" value="other" checked={newNoticeCategory === 'other'} onChange={(e) => setNewNoticeCategory(e.target.value)} className="hidden" />
+                    기타 공지
+                  </label>
+                )}
+              </div>
+
               <input type="text" placeholder="공지 제목" className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-400 focus:outline-none bg-slate-50" value={newTitle} onChange={e => setNewTitle(e.target.value)} required />
               <label className="block w-full cursor-pointer">
                 <div className="w-full px-4 py-3 border border-dashed border-slate-300 rounded-xl bg-slate-50 hover:bg-slate-100 transition flex flex-col items-center justify-center space-y-2">
