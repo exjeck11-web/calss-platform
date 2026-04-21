@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, onSnapshot, addDoc, serverTimestamp, doc, getDoc, getDocs, setDoc, deleteDoc } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, addDoc, serverTimestamp, doc, getDoc, getDocs, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { 
   Calendar, 
   Utensils, 
@@ -23,7 +23,8 @@ import {
   MessageCircle,
   Lock,
   Send,
-  ShieldCheck
+  ShieldCheck,
+  ZoomIn
 } from 'lucide-react';
 
 // --- [선생님 학급 명단 데이터 (수정 금지! 완벽하게 보존했습니다)] ---
@@ -75,9 +76,9 @@ STUDENT_DATA.forEach(student => {
     id: student.id, 
     name: student.name, 
     role: 'student', 
-    canPostAssessment: student.id === '10207' || student.id === '10214', // 가은, 현성: 수행평가 작성
-    canPostOther: student.id === '10207' || student.id === '10209' || student.id === '10214', // 가은, 수하, 현성: 기타 공지 작성
-    canPostPhoto: student.id === '10207' || student.id === '10209', // 가은, 수하: 사진첩 업로드
+    canPostAssessment: student.id === '10207' || student.id === '10214', 
+    canPostOther: student.id === '10207' || student.id === '10209' || student.id === '10214', 
+    canPostPhoto: student.id === '10207' || student.id === '10209', 
     password: '1234', 
     isFirstLogin: true 
   };
@@ -100,7 +101,6 @@ const db = getFirestore(app);
 
 // --- [메인 컴포넌트 시작] ---
 export default function App() {
-  // 로그인 및 유저 상태
   const [currentUser, setCurrentUser] = useState(null);
   const [loginId, setLoginId] = useState('');
   const [loginPw, setLoginPw] = useState('');
@@ -108,30 +108,27 @@ export default function App() {
   const [showPasswordReset, setShowPasswordReset] = useState(false);
   const [newPassword, setNewPassword] = useState('');
 
-  // 선생님 전용: 학생 관리 모달 상태
   const [isStudentManageModalOpen, setIsStudentManageModalOpen] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
   const [resetMessage, setResetMessage] = useState('');
 
-  // 탭 및 카테고리 상태 (notice, gallery, secret)
-  const [activeTab, setActiveTab] = useState('notice');
-  const [noticeCategoryFilter, setNoticeCategoryFilter] = useState('all');
+  const [activeTab, setActiveTab] = useState('teacher_notice');
 
-  // Firebase 및 데이터 상태
   const [firebaseUser, setFirebaseUser] = useState(null);
   const [notices, setNotices] = useState([]);
   const [photos, setPhotos] = useState([]);
-  const [secretMessages, setSecretMessages] = useState([]); // 비밀 쪽지 데이터
-  const [meals, setMeals] = useState({ lunch: [], dinner: [], loading: true, error: null });
+  const [secretMessages, setSecretMessages] = useState([]);
 
-  // 모달(팝업창) 관련 상태
+  const [meals, setMeals] = useState({ today: { lunch: [], dinner: [] }, tomorrow: { lunch: [], dinner: [] }, loading: true, error: null });
+  const [mealDayTab, setMealDayTab] = useState('today');
+
   const [isNoticeModalOpen, setIsNoticeModalOpen] = useState(false);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
-  const [isSecretModalOpen, setIsSecretModalOpen] = useState(false); // 비밀 쪽지 모달
+  const [isSecretModalOpen, setIsSecretModalOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null); 
   const [itemToDelete, setItemToDelete] = useState(null);
+  const [zoomedImageUrl, setZoomedImageUrl] = useState(null);
 
-  // 작성 폼 상태
   const [newTitle, setNewTitle] = useState('');
   const [newContent, setNewContent] = useState('');
   const [newNoticeCategory, setNewNoticeCategory] = useState('teacher');
@@ -141,40 +138,46 @@ export default function App() {
   const [isCompressing, setIsCompressing] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
-  // --- [1. 급식 API (NEIS) 연동] ---
   useEffect(() => {
     const fetchMeals = async () => {
       try {
         const today = new Date();
-        const formattedDate = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
-        const url = `https://open.neis.go.kr/hub/mealServiceDietInfo?Type=json&ATPT_OFCDC_SC_CODE=M10&SD_SCHUL_CODE=8000376&MLSV_YMD=${formattedDate}`;
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
 
-        const response = await fetch(url);
-        const data = await response.json();
+        const getFormattedDate = (dateObj) => {
+          return `${dateObj.getFullYear()}${String(dateObj.getMonth() + 1).padStart(2, '0')}${String(dateObj.getDate()).padStart(2, '0')}`;
+        };
 
-        if (data.mealServiceDietInfo) {
-          const mealList = data.mealServiceDietInfo[1].row;
-          let fetchedLunch = [];
-          let fetchedDinner = [];
+        const fetchForDate = async (dateStr) => {
+          const url = `https://open.neis.go.kr/hub/mealServiceDietInfo?Type=json&ATPT_OFCDC_SC_CODE=M10&SD_SCHUL_CODE=8000376&MLSV_YMD=${dateStr}`;
+          const response = await fetch(url);
+          const data = await response.json();
+          let lunch = [], dinner = [];
 
-          mealList.forEach(meal => {
-            const cleanMenu = meal.DDISH_NM.replace(/<br\/>/g, ',').replace(/[0-9.()]/g, '').split(',').map(m => m.trim()).filter(m => m);
-            if (meal.MMEAL_SC_NM === '중식') fetchedLunch = cleanMenu;
-            if (meal.MMEAL_SC_NM === '석식') fetchedDinner = cleanMenu;
-          });
+          if (data.mealServiceDietInfo) {
+            data.mealServiceDietInfo[1].row.forEach(meal => {
+              const cleanMenu = meal.DDISH_NM.replace(/<br\/>/g, ',').replace(/[0-9.()]/g, '').split(',').map(m => m.trim()).filter(m => m);
+              if (meal.MMEAL_SC_NM === '중식') lunch = cleanMenu;
+              if (meal.MMEAL_SC_NM === '석식') dinner = cleanMenu;
+            });
+          }
+          return { lunch, dinner };
+        };
 
-          setMeals({ lunch: fetchedLunch, dinner: fetchedDinner, loading: false, error: null });
-        } else {
-          setMeals({ lunch: [], dinner: [], loading: false, error: '오늘의 급식 정보가 없습니다. (휴일/방학)' });
-        }
+        const [todayMeals, tomorrowMeals] = await Promise.all([
+          fetchForDate(getFormattedDate(today)),
+          fetchForDate(getFormattedDate(tomorrow))
+        ]);
+
+        setMeals({ today: todayMeals, tomorrow: tomorrowMeals, loading: false, error: null });
       } catch (error) {
-        setMeals({ lunch: [], dinner: [], loading: false, error: '급식을 불러오지 못했습니다.' });
+        setMeals({ today: { lunch: [], dinner: [] }, tomorrow: { lunch: [], dinner: [] }, loading: false, error: '급식을 불러오지 못했습니다.' });
       }
     };
     fetchMeals();
   }, []);
 
-  // --- [2. Firebase 인증 및 실시간 데이터 연동] ---
   useEffect(() => {
     const initAuth = async () => {
       try { await signInAnonymously(auth); } 
@@ -189,7 +192,6 @@ export default function App() {
   useEffect(() => {
     if (!firebaseUser) return;
 
-    // 공지사항 불러오기
     const noticesRef = collection(db, 'notices');
     const unsubNotices = onSnapshot(noticesRef, (snapshot) => {
       const loadedNotices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -197,7 +199,6 @@ export default function App() {
       setNotices(loadedNotices);
     });
 
-    // 사진첩 불러오기
     const galleryRef = collection(db, 'gallery');
     const unsubGallery = onSnapshot(galleryRef, (snapshot) => {
       const loadedPhotos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -205,7 +206,6 @@ export default function App() {
       setPhotos(loadedPhotos);
     });
 
-    // 비밀 쪽지 불러오기
     const secretRef = collection(db, 'secretMessages');
     const unsubSecret = onSnapshot(secretRef, (snapshot) => {
       const loadedSecrets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -216,7 +216,6 @@ export default function App() {
     return () => { unsubNotices(); unsubGallery(); unsubSecret(); };
   }, [firebaseUser]);
 
-  // --- [선생님 전용: 학생 목록 불러오기 & 비밀번호 초기화] ---
   const loadAllUsersForTeacher = async () => {
     if (currentUser?.role !== 'teacher') return;
     try {
@@ -251,7 +250,6 @@ export default function App() {
     }
   };
 
-  // --- [이미지 압축 마법사] ---
   const compressImage = (file) => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -280,12 +278,12 @@ export default function App() {
     });
   };
 
-  // --- [사용자 상호작용 함수들] ---
   const openNoticeModal = () => {
-    if (currentUser?.role === 'teacher') setNewNoticeCategory('teacher');
-    else if (currentUser?.canPostAssessment) setNewNoticeCategory('assessment');
-    else if (currentUser?.canPostOther) setNewNoticeCategory('other');
+    let defaultCategory = 'teacher';
+    if (activeTab === 'assessment_notice') defaultCategory = 'assessment';
+    if (activeTab === 'other_notice') defaultCategory = 'other';
     
+    setNewNoticeCategory(defaultCategory);
     setIsNoticeModalOpen(true);
   };
 
@@ -368,8 +366,18 @@ export default function App() {
         senderId: currentUser.id
       });
       closeModal();
-      alert('선생님께 비밀 쪽지를 무사히 전달했습니다!');
     } catch (error) { setSubmitError(`전송 실패: ${error.message}`); }
+  };
+
+  // --- [새로 추가된 기능: 카테고리 이동] ---
+  const handleMoveCategory = async (newCategory) => {
+    if (!firebaseUser || !selectedItem || !selectedItem.hasOwnProperty('type')) return;
+    try {
+      await updateDoc(doc(db, 'notices', selectedItem.id), { category: newCategory });
+      setSelectedItem(prev => ({ ...prev, category: newCategory }));
+    } catch (error) {
+      console.error('카테고리 변경 실패:', error);
+    }
   };
 
   const executeDelete = async () => {
@@ -414,8 +422,6 @@ export default function App() {
         return setLoginError('존재하지 않는 아이디(학번)입니다.');
       }
 
-      // DB 데이터와 코드의 권한 데이터를 병합 
-      // (DB에는 이전 비밀번호 정보만 유지, 권한은 항상 코드 기준)
       let userData = { ...baseData };
       if (userSnap.exists()) {
         const dbData = userSnap.data();
@@ -469,7 +475,30 @@ export default function App() {
     return upcoming.sort((a, b) => a.dDay - b.dDay);
   };
 
-  // --- [5. 화면 렌더링 (UI)] ---
+  // --- [한국어 받침 판별기 (이/가, 의/이의)] ---
+  const getPostposition = (name) => {
+    if (!name) return '의';
+    const lastChar = name.charCodeAt(name.length - 1);
+    if (lastChar < 0xAC00 || lastChar > 0xD7A3) return '의';
+    return (lastChar - 0xAC00) % 28 > 0 ? '이의' : '의'; 
+  };
+
+  // --- [UI 로직 변수들] ---
+  const isNoticeTab = activeTab.endsWith('_notice');
+  const filteredNotices = notices.filter(notice => {
+    if (activeTab === 'teacher_notice') return notice.category === 'teacher' || !notice.category;
+    if (activeTab === 'assessment_notice') return notice.category === 'assessment';
+    if (activeTab === 'other_notice') return notice.category === 'other';
+    return false;
+  });
+
+  const canPostInCurrentTab = 
+    currentUser?.role === 'teacher' ||
+    (activeTab === 'assessment_notice' && currentUser?.canPostAssessment) ||
+    (activeTab === 'other_notice' && currentUser?.canPostOther);
+
+
+  // --- [화면 렌더링 (UI)] ---
 
   if (!currentUser) {
     return (
@@ -510,13 +539,6 @@ export default function App() {
   const todayDate = new Date();
   const formattedToday = `${todayDate.getFullYear()}년 ${todayDate.getMonth() + 1}월 ${todayDate.getDate()}일 ${['일', '월', '화', '수', '목', '금', '토'][todayDate.getDay()]}요일`;
 
-  // 필터링된 공지사항 목록
-  const filteredNotices = notices.filter(notice => 
-    noticeCategoryFilter === 'all' || 
-    notice.category === noticeCategoryFilter || 
-    (!notice.category && noticeCategoryFilter === 'teacher') 
-  );
-
   return (
     <div className="min-h-screen bg-[#FDFBF7] text-slate-800 font-sans pb-10">
       <header className="bg-white shadow-sm sticky top-0 z-10">
@@ -537,7 +559,6 @@ export default function App() {
             <div className="flex items-center space-x-2">
               <span className="text-sm font-semibold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full">{currentUser.name}</span>
               
-              {/* 선생님 전용: 학생 관리 모달 오픈 버튼 */}
               {currentUser.role === 'teacher' && (
                  <button onClick={loadAllUsersForTeacher} className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-full transition" title="학생 계정 관리">
                    <Users className="w-5 h-5" />
@@ -556,8 +577,12 @@ export default function App() {
             <div className="flex items-center space-x-3">
               <div className="bg-white p-2 rounded-full shadow-sm"><Gift className="text-pink-500 w-6 h-6" /></div>
               <div>
-                <p className="font-bold text-pink-800">{upcomingBirthdays.map(s => s.name).join(', ')} 친구의 생일이 다가옵니다! 🎉</p>
-                <p className="text-sm text-pink-600">{upcomingBirthdays[0].dDay === 0 ? '오늘이 바로 생일이에요! 축하해주세요!' : `생일 D-${upcomingBirthdays[0].dDay}`}</p>
+                <p className="font-bold text-pink-800 text-lg">
+                  {upcomingBirthdays.map(s => s.name).join(', ')}{getPostposition(upcomingBirthdays[upcomingBirthdays.length - 1].name)} 생일이 다가옵니다! 🎂🎉🎁✨💖
+                </p>
+                <p className="text-sm text-pink-600 mt-0.5 font-medium">
+                  {upcomingBirthdays[0].dDay === 0 ? '오늘이 바로 생일이에요! 🥳 다 같이 축하해주세요!! 🎊' : `두근두근 생일 D-${upcomingBirthdays[0].dDay} 🎈`}
+                </p>
               </div>
             </div>
           </div>
@@ -568,31 +593,30 @@ export default function App() {
             
             {/* --- 탭 전환 버튼 --- */}
             <div className="flex space-x-2 border-b border-slate-200 pb-2 overflow-x-auto" style={{scrollbarWidth: 'none'}}>
-              <button onClick={() => setActiveTab('notice')} className={`px-4 py-2 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'notice' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>알림장</button>
+              <button onClick={() => setActiveTab('teacher_notice')} className={`px-4 py-2 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'teacher_notice' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>선생님 공지</button>
+              <button onClick={() => setActiveTab('assessment_notice')} className={`px-4 py-2 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'assessment_notice' ? 'bg-pink-50 text-pink-600 border-b-2 border-pink-600' : 'text-slate-400 hover:text-slate-600'}`}>수행평가</button>
+              <button onClick={() => setActiveTab('other_notice')} className={`px-4 py-2 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'other_notice' ? 'bg-orange-50 text-orange-600 border-b-2 border-orange-600' : 'text-slate-400 hover:text-slate-600'}`}>기타 공지</button>
               <button onClick={() => setActiveTab('gallery')} className={`px-4 py-2 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'gallery' ? 'bg-green-50 text-green-600 border-b-2 border-green-600' : 'text-slate-400 hover:text-slate-600'}`}>사진첩</button>
               <button onClick={() => setActiveTab('secret')} className={`px-4 py-2 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'secret' ? 'bg-purple-50 text-purple-600 border-b-2 border-purple-600' : 'text-slate-400 hover:text-slate-600'}`}>
                 비밀 쪽지 <Lock className="inline w-3 h-3 ml-1 mb-0.5" />
               </button>
             </div>
 
-            {/* 알림장 화면 */}
-            {activeTab === 'notice' && (
+            {/* 분리된 공지사항 화면 */}
+            {isNoticeTab && (
               <>
-                <div className="flex justify-between items-center mb-2">
-                  <h2 className="text-lg font-bold flex items-center"><Bell className="w-5 h-5 mr-2 text-blue-500" /> 우리학급 알림장</h2>
-                  {(currentUser.role === 'teacher' || currentUser.canPostAssessment || currentUser.canPostOther) && (
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-lg font-bold flex items-center">
+                    {activeTab === 'teacher_notice' ? <Bell className="w-5 h-5 mr-2 text-blue-500" /> :
+                     activeTab === 'assessment_notice' ? <FileText className="w-5 h-5 mr-2 text-pink-500" /> :
+                     <Bell className="w-5 h-5 mr-2 text-orange-500" /> }
+                    {activeTab === 'teacher_notice' ? '선생님 공지사항' : activeTab === 'assessment_notice' ? '수행평가 안내' : '기타 학급 공지'}
+                  </h2>
+                  {canPostInCurrentTab && (
                     <button onClick={openNoticeModal} className="flex items-center text-sm bg-blue-500 text-white px-3 py-1.5 rounded-lg hover:bg-blue-600 transition shadow-sm">
-                      <PlusCircle className="w-4 h-4 mr-1" /> 공지 작성
+                      <PlusCircle className="w-4 h-4 mr-1" /> 글 쓰기
                     </button>
                   )}
-                </div>
-
-                {/* 공지사항 카테고리 필터 버튼 */}
-                <div className="flex space-x-2 mb-4 overflow-x-auto pb-2" style={{scrollbarWidth: 'none'}}>
-                  <button onClick={() => setNoticeCategoryFilter('all')} className={`px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition ${noticeCategoryFilter === 'all' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>전체</button>
-                  <button onClick={() => setNoticeCategoryFilter('teacher')} className={`px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition ${noticeCategoryFilter === 'teacher' ? 'bg-blue-500 text-white shadow-md' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}>선생님 공지</button>
-                  <button onClick={() => setNoticeCategoryFilter('assessment')} className={`px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition ${noticeCategoryFilter === 'assessment' ? 'bg-pink-500 text-white shadow-md' : 'bg-pink-50 text-pink-600 hover:bg-pink-100'}`}>수행평가</button>
-                  <button onClick={() => setNoticeCategoryFilter('other')} className={`px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition ${noticeCategoryFilter === 'other' ? 'bg-orange-500 text-white shadow-md' : 'bg-orange-50 text-orange-600 hover:bg-orange-100'}`}>기타 공지</button>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -600,24 +624,22 @@ export default function App() {
                     <div key={notice.id} onClick={() => setSelectedItem(notice)} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition cursor-pointer flex flex-col justify-between group">
                       <div>
                         <div className="flex justify-between items-start mb-3">
-                          <div className="flex space-x-2">
-                            <span className={`text-xs font-bold px-2 py-1 rounded-md ${notice.category === 'assessment' ? 'bg-pink-100 text-pink-600' : notice.category === 'other' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>
-                              {notice.category === 'assessment' ? '수행평가' : notice.category === 'other' ? '기타 공지' : '선생님 공지'}
-                            </span>
-                            <span className={`text-xs font-bold px-2 py-1 rounded-md ${notice.type === 'pdf' ? 'bg-red-100 text-red-600' : notice.type === 'image' ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-600'}`}>
-                              {notice.type === 'pdf' ? <FileText className="inline w-3 h-3 mr-1"/> : null}
-                              {notice.type === 'image' ? <ImageIcon className="inline w-3 h-3 mr-1"/> : null}
-                              {notice.type.toUpperCase()}
-                            </span>
-                          </div>
+                          <span className={`text-xs font-bold px-2 py-1 rounded-md ${notice.type === 'pdf' ? 'bg-red-100 text-red-600' : notice.type === 'image' ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-600'}`}>
+                            {notice.type === 'pdf' ? <FileText className="inline w-3 h-3 mr-1"/> : null}
+                            {notice.type === 'image' ? <ImageIcon className="inline w-3 h-3 mr-1"/> : null}
+                            {notice.type.toUpperCase()}
+                          </span>
                         </div>
                         <h3 className="font-bold text-slate-800 mb-2 group-hover:text-blue-600 transition">{notice.title}</h3>
                         <p className="text-sm text-slate-500 line-clamp-2">{notice.content}</p>
                       </div>
-                      <div className="mt-4 text-xs text-slate-400 text-right">{notice.date}</div>
+                      <div className="mt-4 text-xs text-slate-400 flex justify-between">
+                         <span>{notice.author}</span>
+                         <span>{notice.date}</span>
+                      </div>
                     </div>
                   ))}
-                  {filteredNotices.length === 0 && <div className="col-span-full py-10 text-center text-slate-400 bg-white rounded-2xl border border-dashed">해당 카테고리의 공지사항이 없습니다.</div>}
+                  {filteredNotices.length === 0 && <div className="col-span-full py-10 text-center text-slate-400 bg-white rounded-2xl border border-dashed">등록된 내용이 없습니다.</div>}
                 </div>
               </>
             )}
@@ -717,18 +739,25 @@ export default function App() {
               </a>
             </div>
 
-            {/* 급식 영역 */}
+            {/* 급식 영역 (오늘/내일 선택 기능) */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-              <h2 className="text-lg font-bold flex items-center mb-4"><Utensils className="w-5 h-5 mr-2 text-orange-500" /> 오늘의 급식</h2>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-bold flex items-center"><Utensils className="w-5 h-5 mr-2 text-orange-500" /> 급식 메뉴</h2>
+                <div className="flex bg-slate-100 rounded-lg p-1">
+                  <button onClick={() => setMealDayTab('today')} className={`px-3 py-1 text-xs font-bold rounded-md transition ${mealDayTab === 'today' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500'}`}>오늘</button>
+                  <button onClick={() => setMealDayTab('tomorrow')} className={`px-3 py-1 text-xs font-bold rounded-md transition ${mealDayTab === 'tomorrow' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500'}`}>내일</button>
+                </div>
+              </div>
+
               {meals.loading ? <div className="text-center text-sm text-slate-500 py-6 animate-pulse">🍽️ 불러오는 중...</div> : meals.error ? <div className="text-center text-sm text-red-500 py-6 font-semibold">{meals.error}</div> : (
                 <div className="space-y-4">
                   <div className="bg-orange-50 rounded-xl p-4">
-                    <h3 className="text-sm font-bold text-orange-700 mb-2 border-b border-orange-200 pb-1">점심 메뉴</h3>
-                    <p className="text-sm text-slate-700 leading-relaxed">{meals.lunch.length > 0 ? meals.lunch.join(', ') : '점심 급식이 없습니다.'}</p>
+                    <h3 className="text-sm font-bold text-orange-700 mb-2 border-b border-orange-200 pb-1">점심</h3>
+                    <p className="text-sm text-slate-700 leading-relaxed">{meals[mealDayTab].lunch.length > 0 ? meals[mealDayTab].lunch.join(', ') : '급식이 없습니다.'}</p>
                   </div>
                   <div className="bg-blue-50 rounded-xl p-4">
-                    <h3 className="text-sm font-bold text-blue-700 mb-2 border-b border-blue-200 pb-1">저녁 메뉴</h3>
-                    <p className="text-sm text-slate-700 leading-relaxed">{meals.dinner.length > 0 ? meals.dinner.join(', ') : '저녁 급식이 없습니다.'}</p>
+                    <h3 className="text-sm font-bold text-blue-700 mb-2 border-b border-blue-200 pb-1">저녁</h3>
+                    <p className="text-sm text-slate-700 leading-relaxed">{meals[mealDayTab].dinner.length > 0 ? meals[mealDayTab].dinner.join(', ') : '급식이 없습니다.'}</p>
                   </div>
                 </div>
               )}
@@ -775,26 +804,30 @@ export default function App() {
         </div>
       )}
 
-      {/* 모달: 공지사항 및 사진 상세보기 */}
+      {/* 모달: 공지사항 및 사진 상세보기 (확대 기능 및 카테고리 이동 기능 포함) */}
       {selectedItem && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <div className="flex items-center space-x-2">
-                {selectedItem.category && (
-                   <span className={`text-xs font-bold px-2 py-1 rounded-md ${selectedItem.category === 'assessment' ? 'bg-pink-100 text-pink-600' : selectedItem.category === 'other' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>
-                     {selectedItem.category === 'assessment' ? '수행평가' : selectedItem.category === 'other' ? '기타 공지' : '선생님 공지'}
-                   </span>
-                )}
                 <h3 className="font-bold text-lg">{selectedItem.title}</h3>
               </div>
               <button onClick={() => setSelectedItem(null)} className="p-1 rounded-full hover:bg-slate-200 transition"><X className="w-6 h-6 text-slate-500" /></button>
             </div>
             <div className="p-6 overflow-y-auto">
               {(selectedItem.type === 'image' || selectedItem.imageUrl) && (
-                <div className="w-full mb-4 rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center">
+                <div 
+                  className="w-full mb-4 rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center cursor-pointer relative group border border-slate-200"
+                  onClick={() => setZoomedImageUrl(selectedItem.attachmentUrl || selectedItem.imageUrl)}
+                  title="사진을 클릭하면 확대됩니다"
+                >
                    {selectedItem.attachmentUrl || selectedItem.imageUrl ? (
-                     <img src={selectedItem.attachmentUrl || selectedItem.imageUrl} alt="첨부 이미지" className="max-w-full h-auto object-contain" style={{ maxHeight: '300px' }} />
+                     <>
+                       <img src={selectedItem.attachmentUrl || selectedItem.imageUrl} alt="첨부 이미지" className="max-w-full h-auto object-contain" style={{ maxHeight: '300px' }} />
+                       <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition duration-300">
+                         <ZoomIn className="text-white w-10 h-10" />
+                       </div>
+                     </>
                    ) : (
                      <div className="w-full h-48 border-2 border-dashed border-slate-300 flex items-center justify-center text-slate-400">[이미지 파일이 없습니다]</div>
                    )}
@@ -809,12 +842,41 @@ export default function App() {
               {selectedItem.content && <p className="text-slate-700 whitespace-pre-wrap leading-relaxed">{selectedItem.content}</p>}
             </div>
             <div className="p-4 bg-slate-50 border-t flex justify-between items-center">
-              {(currentUser.role === 'teacher' || currentUser.id === selectedItem.uploaderId) ? (
-                <button onClick={() => setItemToDelete(selectedItem)} className="text-red-500 font-semibold px-4 py-2 rounded-xl hover:bg-red-50 transition">삭제</button>
-              ) : <div></div>}
-              <button onClick={() => setSelectedItem(null)} className="bg-slate-800 text-white px-6 py-2 rounded-xl font-semibold hover:bg-slate-700 transition">확인</button>
+              
+              {/* 카테고리 이동 드롭다운 */}
+              <div className="flex items-center space-x-2">
+                {selectedItem.hasOwnProperty('type') && (currentUser.role === 'teacher' || currentUser.id === selectedItem.uploaderId) && (
+                  <select
+                    className="text-xs font-bold border border-slate-300 rounded-xl px-3 py-2 bg-white text-slate-700 outline-none focus:ring-2 focus:ring-blue-400 cursor-pointer shadow-sm transition"
+                    value={selectedItem.category || 'teacher'}
+                    onChange={(e) => handleMoveCategory(e.target.value)}
+                  >
+                    <option value="" disabled>카테고리 이동</option>
+                    <option value="teacher" disabled={currentUser.role !== 'teacher'}>➡️ 선생님 공지</option>
+                    <option value="assessment" disabled={currentUser.role !== 'teacher' && !currentUser.canPostAssessment}>➡️ 수행평가</option>
+                    <option value="other" disabled={currentUser.role !== 'teacher' && !currentUser.canPostOther}>➡️ 기타 공지</option>
+                  </select>
+                )}
+              </div>
+
+              <div className="flex space-x-2">
+                {(currentUser.role === 'teacher' || currentUser.id === selectedItem.uploaderId) && (
+                  <button onClick={() => setItemToDelete(selectedItem)} className="text-red-500 font-semibold px-4 py-2 rounded-xl hover:bg-red-50 transition">삭제</button>
+                )}
+                <button onClick={() => setSelectedItem(null)} className="bg-slate-800 text-white px-6 py-2 rounded-xl font-semibold hover:bg-slate-700 transition">확인</button>
+              </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* --- 전체화면 사진 확대 모달 (최상단) --- */}
+      {zoomedImageUrl && (
+        <div className="fixed inset-0 bg-black/95 z-[70] flex items-center justify-center p-4 cursor-zoom-out" onClick={() => setZoomedImageUrl(null)}>
+          <button className="absolute top-4 right-4 text-white p-2 bg-white/10 hover:bg-white/30 rounded-full transition" onClick={() => setZoomedImageUrl(null)}>
+            <X className="w-8 h-8" />
+          </button>
+          <img src={zoomedImageUrl} alt="확대된 이미지" className="max-w-full max-h-[95vh] object-contain shadow-2xl" />
         </div>
       )}
 
@@ -832,7 +894,7 @@ export default function App() {
         </div>
       )}
 
-      {/* 모달: 알림장 새 공지 작성 (권한별 카테고리 선택 처리) */}
+      {/* 모달: 알림장 새 공지 작성 */}
       {isNoticeModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 max-h-[90vh] overflow-y-auto">
@@ -842,7 +904,6 @@ export default function App() {
             </div>
             <form onSubmit={submitNewNotice} className="space-y-4">
               
-              {/* --- 카테고리 선택 버튼들 --- */}
               <div className="flex space-x-2">
                 {currentUser.role === 'teacher' && (
                   <label className={`flex-1 text-center py-2.5 rounded-xl cursor-pointer font-bold text-sm transition ${newNoticeCategory === 'teacher' ? 'bg-blue-500 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
