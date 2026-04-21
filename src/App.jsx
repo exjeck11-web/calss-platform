@@ -408,9 +408,22 @@ export default function App() {
       const cleanId = loginId.trim();
       const userRef = doc(db, 'users', cleanId);
       const userSnap = await getDoc(userRef);
-      const userData = userSnap.exists() ? userSnap.data() : INITIAL_USERS[cleanId];
+      
+      const baseData = INITIAL_USERS[cleanId];
+      if (!baseData) {
+        return setLoginError('존재하지 않는 아이디(학번)입니다.');
+      }
 
-      if (userData && userData.password === loginPw) {
+      // DB 데이터와 코드의 권한 데이터를 병합 
+      // (DB에는 이전 비밀번호 정보만 유지, 권한은 항상 코드 기준)
+      let userData = { ...baseData };
+      if (userSnap.exists()) {
+        const dbData = userSnap.data();
+        userData.password = dbData.password || baseData.password;
+        userData.isFirstLogin = dbData.isFirstLogin !== undefined ? dbData.isFirstLogin : baseData.isFirstLogin;
+      }
+
+      if (userData.password === loginPw) {
         if (userData.isFirstLogin) setShowPasswordReset(true);
         setCurrentUser(userData);
       } else {
