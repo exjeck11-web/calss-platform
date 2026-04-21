@@ -19,7 +19,11 @@ import {
   Camera,
   ExternalLink,
   BookOpen,
-  Users
+  Users,
+  MessageCircle,
+  Lock,
+  Send,
+  ShieldCheck
 } from 'lucide-react';
 
 // --- [선생님 학급 명단 데이터 (수정 금지! 완벽하게 보존했습니다)] ---
@@ -109,7 +113,7 @@ export default function App() {
   const [allUsers, setAllUsers] = useState([]);
   const [resetMessage, setResetMessage] = useState('');
 
-  // 탭 및 카테고리 상태
+  // 탭 및 카테고리 상태 (notice, gallery, secret)
   const [activeTab, setActiveTab] = useState('notice');
   const [noticeCategoryFilter, setNoticeCategoryFilter] = useState('all');
 
@@ -117,11 +121,13 @@ export default function App() {
   const [firebaseUser, setFirebaseUser] = useState(null);
   const [notices, setNotices] = useState([]);
   const [photos, setPhotos] = useState([]);
+  const [secretMessages, setSecretMessages] = useState([]); // 비밀 쪽지 데이터
   const [meals, setMeals] = useState({ lunch: [], dinner: [], loading: true, error: null });
 
   // 모달(팝업창) 관련 상태
   const [isNoticeModalOpen, setIsNoticeModalOpen] = useState(false);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
+  const [isSecretModalOpen, setIsSecretModalOpen] = useState(false); // 비밀 쪽지 모달
   const [selectedItem, setSelectedItem] = useState(null); 
   const [itemToDelete, setItemToDelete] = useState(null);
 
@@ -199,7 +205,15 @@ export default function App() {
       setPhotos(loadedPhotos);
     });
 
-    return () => { unsubNotices(); unsubGallery(); };
+    // 비밀 쪽지 불러오기
+    const secretRef = collection(db, 'secretMessages');
+    const unsubSecret = onSnapshot(secretRef, (snapshot) => {
+      const loadedSecrets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      loadedSecrets.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+      setSecretMessages(loadedSecrets);
+    });
+
+    return () => { unsubNotices(); unsubGallery(); unsubSecret(); };
   }, [firebaseUser]);
 
   // --- [선생님 전용: 학생 목록 불러오기 & 비밀번호 초기화] ---
@@ -210,7 +224,6 @@ export default function App() {
       const dbUsers = {};
       snap.forEach(doc => { dbUsers[doc.id] = doc.data(); });
       
-      // DB에 없으면 초기 비밀번호(1234) 상태로 보여주기 위해 합침
       const merged = Object.keys(INITIAL_USERS)
         .filter(id => id !== 'teacher')
         .map(id => dbUsers[id] || INITIAL_USERS[id]);
@@ -340,10 +353,29 @@ export default function App() {
     } catch (error) { setSubmitError(`사진 업로드 실패: ${error.message}`); }
   };
 
+  const submitNewSecretMessage = async (e) => {
+    e.preventDefault(); 
+    setSubmitError('');
+    if (!firebaseUser) return setSubmitError('DB 연결 중입니다.');
+    if (!newContent) return;
+
+    try {
+      await addDoc(collection(db, 'secretMessages'), {
+        content: newContent,
+        date: new Date().toISOString().split('T')[0], 
+        createdAt: serverTimestamp(),
+        senderName: currentUser.name,
+        senderId: currentUser.id
+      });
+      closeModal();
+      alert('선생님께 비밀 쪽지를 무사히 전달했습니다!');
+    } catch (error) { setSubmitError(`전송 실패: ${error.message}`); }
+  };
+
   const executeDelete = async () => {
     if (!firebaseUser || !itemToDelete) return;
     try {
-      const collectionName = itemToDelete.imageUrl ? 'gallery' : 'notices';
+      const collectionName = itemToDelete.collectionType || (itemToDelete.imageUrl ? 'gallery' : 'notices');
       await deleteDoc(doc(db, collectionName, itemToDelete.id));
       setItemToDelete(null);
       setSelectedItem(null);
@@ -355,8 +387,10 @@ export default function App() {
   const closeModal = () => {
     setIsNoticeModalOpen(false); 
     setIsPhotoModalOpen(false);
+    setIsSecretModalOpen(false);
     setNewTitle(''); 
     setNewContent(''); 
+    setNewNoticeCategory('teacher'); 
     setSelectedFile(null);
     setFilePreviewUrl(null); 
     setFileType('text'); 
@@ -391,7 +425,6 @@ export default function App() {
       const updatedUser = { ...currentUser, password: newPassword, isFirstLogin: false };
       await setDoc(doc(db, 'users', currentUser.id), updatedUser);
       
-      // 재로그인 유도
       setCurrentUser(null);
       setLoginId('');
       setLoginPw('');
@@ -520,10 +553,13 @@ export default function App() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-4">
             
-            {/* 탭 전환 버튼 */}
-            <div className="flex space-x-2 border-b border-slate-200 pb-2">
-              <button onClick={() => setActiveTab('notice')} className={`px-4 py-2 font-bold rounded-t-lg transition ${activeTab === 'notice' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>알림장</button>
-              <button onClick={() => setActiveTab('gallery')} className={`px-4 py-2 font-bold rounded-t-lg transition ${activeTab === 'gallery' ? 'bg-green-50 text-green-600 border-b-2 border-green-600' : 'text-slate-400 hover:text-slate-600'}`}>사진첩</button>
+            {/* --- 탭 전환 버튼 --- */}
+            <div className="flex space-x-2 border-b border-slate-200 pb-2 overflow-x-auto" style={{scrollbarWidth: 'none'}}>
+              <button onClick={() => setActiveTab('notice')} className={`px-4 py-2 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'notice' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>알림장</button>
+              <button onClick={() => setActiveTab('gallery')} className={`px-4 py-2 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'gallery' ? 'bg-green-50 text-green-600 border-b-2 border-green-600' : 'text-slate-400 hover:text-slate-600'}`}>사진첩</button>
+              <button onClick={() => setActiveTab('secret')} className={`px-4 py-2 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'secret' ? 'bg-purple-50 text-purple-600 border-b-2 border-purple-600' : 'text-slate-400 hover:text-slate-600'}`}>
+                비밀 쪽지 <Lock className="inline w-3 h-3 ml-1 mb-0.5" />
+              </button>
             </div>
 
             {/* 알림장 화면 */}
@@ -538,7 +574,7 @@ export default function App() {
                   )}
                 </div>
 
-                {/* --- 공지사항 카테고리 필터 버튼 --- */}
+                {/* 공지사항 카테고리 필터 버튼 */}
                 <div className="flex space-x-2 mb-4 overflow-x-auto pb-2" style={{scrollbarWidth: 'none'}}>
                   <button onClick={() => setNoticeCategoryFilter('all')} className={`px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition ${noticeCategoryFilter === 'all' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>전체</button>
                   <button onClick={() => setNoticeCategoryFilter('teacher')} className={`px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition ${noticeCategoryFilter === 'teacher' ? 'bg-blue-500 text-white shadow-md' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}>선생님 공지</button>
@@ -552,11 +588,9 @@ export default function App() {
                       <div>
                         <div className="flex justify-between items-start mb-3">
                           <div className="flex space-x-2">
-                            {/* 카테고리 뱃지 */}
                             <span className={`text-xs font-bold px-2 py-1 rounded-md ${notice.category === 'assessment' ? 'bg-pink-100 text-pink-600' : notice.category === 'other' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>
                               {notice.category === 'assessment' ? '수행평가' : notice.category === 'other' ? '기타 공지' : '선생님 공지'}
                             </span>
-                            {/* 파일 타입 뱃지 */}
                             <span className={`text-xs font-bold px-2 py-1 rounded-md ${notice.type === 'pdf' ? 'bg-red-100 text-red-600' : notice.type === 'image' ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-600'}`}>
                               {notice.type === 'pdf' ? <FileText className="inline w-3 h-3 mr-1"/> : null}
                               {notice.type === 'image' ? <ImageIcon className="inline w-3 h-3 mr-1"/> : null}
@@ -580,7 +614,6 @@ export default function App() {
               <>
                 <div className="flex justify-between items-center mb-2">
                   <h2 className="text-lg font-bold flex items-center"><Camera className="w-5 h-5 mr-2 text-green-500" /> 추억 사진첩</h2>
-                  {/* --- 선생님 및 권한 부여된 학생만 업로드 가능 --- */}
                   {(currentUser.role === 'teacher' || currentUser.canPostPhoto) && (
                     <button onClick={() => setIsPhotoModalOpen(true)} className="flex items-center text-sm bg-green-500 text-white px-3 py-1.5 rounded-lg hover:bg-green-600 transition shadow-sm">
                       <Camera className="w-4 h-4 mr-1" /> 사진 올리기
@@ -600,6 +633,61 @@ export default function App() {
                     </div>
                   ))}
                   {photos.length === 0 && <div className="col-span-full py-10 text-center text-slate-400 bg-white rounded-2xl border border-dashed">첫 번째 사진을 올려주세요! 📸</div>}
+                </div>
+              </>
+            )}
+
+            {/* --- 비밀 쪽지 화면 --- */}
+            {activeTab === 'secret' && (
+              <>
+                <div className="flex justify-between items-center mb-2">
+                  <h2 className="text-lg font-bold flex items-center"><Lock className="w-5 h-5 mr-2 text-purple-500" /> 비밀 쪽지함</h2>
+                  {currentUser.role === 'student' && (
+                    <button onClick={() => setIsSecretModalOpen(true)} className="flex items-center text-sm bg-purple-500 text-white px-3 py-1.5 rounded-lg hover:bg-purple-600 transition shadow-sm">
+                      <Send className="w-4 h-4 mr-1" /> 쪽지 쓰기
+                    </button>
+                  )}
+                </div>
+
+                <div className="bg-purple-50 p-4 rounded-2xl mb-4 border border-purple-100 flex items-start">
+                   <ShieldCheck className="w-5 h-5 text-purple-500 mr-2 mt-0.5 flex-shrink-0" />
+                   <p className="text-sm text-purple-700">
+                     {currentUser.role === 'teacher' 
+                       ? '아이들이 보낸 비밀 쪽지함입니다. 선생님만 볼 수 있습니다.' 
+                       : '선생님에게만 보이는 비밀 쪽지함입니다. 고민이나 하고 싶은 말을 편하게 남겨주세요!'}
+                   </p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4">
+                  {secretMessages
+                    .filter(msg => currentUser.role === 'teacher' || msg.senderId === currentUser.id)
+                    .map((msg) => (
+                    <div key={msg.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 relative group">
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="flex items-center space-x-2">
+                          <div className="bg-purple-100 p-1.5 rounded-full"><User className="w-4 h-4 text-purple-600"/></div>
+                          <span className="font-bold text-slate-800">{currentUser.role === 'teacher' ? msg.senderName : '내가 보낸 쪽지'}</span>
+                        </div>
+                        <span className="text-xs text-slate-400">{msg.date}</span>
+                      </div>
+                      <p className="text-sm text-slate-700 whitespace-pre-wrap bg-slate-50 p-4 rounded-xl leading-relaxed">{msg.content}</p>
+                      
+                      {currentUser.role === 'teacher' && (
+                         <button 
+                           onClick={() => setItemToDelete({ ...msg, collectionType: 'secretMessages' })} 
+                           className="absolute top-4 right-4 text-xs text-red-400 hover:text-red-600 font-bold opacity-0 group-hover:opacity-100 transition"
+                         >
+                           삭제
+                         </button>
+                      )}
+                    </div>
+                  ))}
+                  {secretMessages.filter(msg => currentUser.role === 'teacher' || msg.senderId === currentUser.id).length === 0 && (
+                    <div className="py-10 text-center text-slate-400 bg-white rounded-2xl border border-dashed flex flex-col items-center">
+                      <MessageCircle className="w-8 h-8 mb-2 text-slate-300" />
+                      {currentUser.role === 'teacher' ? '아직 도착한 비밀 쪽지가 없습니다.' : '선생님께 보낸 비밀 쪽지가 없습니다.'}
+                    </div>
+                  )}
                 </div>
               </>
             )}
@@ -805,6 +893,35 @@ export default function App() {
               {filePreviewUrl && <div className="w-full rounded-xl overflow-hidden bg-slate-100 flex justify-center"><img src={filePreviewUrl} alt="미리보기" className="max-h-48 object-contain" /></div>}
               {submitError && <div className="p-3 bg-red-50 text-red-600 text-sm rounded-xl border border-red-100">⚠️ {submitError}</div>}
               <button type="submit" disabled={isCompressing || !filePreviewUrl} className={`w-full text-white font-bold py-3 rounded-xl transition shadow-md ${(isCompressing || !filePreviewUrl) ? 'bg-slate-400 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'}`}>사진첩에 올리기</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 모달: 비밀 쪽지 작성 */}
+      {isSecretModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-lg flex items-center"><Lock className="w-5 h-5 mr-2 text-purple-500" /> 선생님께 비밀 쪽지 쓰기</h3>
+              <button onClick={closeModal} className="text-slate-500 hover:bg-slate-100 p-1 rounded-full transition"><X className="w-5 h-5"/></button>
+            </div>
+            <form onSubmit={submitNewSecretMessage} className="space-y-4">
+              <div className="bg-purple-50 p-3 rounded-xl mb-4 text-xs text-purple-700 flex items-center">
+                <ShieldCheck className="w-4 h-4 mr-1 flex-shrink-0" />
+                이 쪽지는 담임선생님만 읽을 수 있어요. 안심하고 편하게 적어주세요!
+              </div>
+              <textarea 
+                placeholder="선생님께 하고 싶은 말을 자유롭게 적어주세요..." 
+                className="w-full px-4 py-3 border rounded-xl h-40 resize-none focus:ring-2 focus:ring-purple-400 focus:outline-none bg-slate-50" 
+                value={newContent} 
+                onChange={e => setNewContent(e.target.value)} 
+                required 
+              />
+              {submitError && <div className="p-3 bg-red-50 text-red-600 text-sm rounded-xl border border-red-100">⚠️ {submitError}</div>}
+              <button type="submit" className="w-full bg-purple-500 text-white font-bold py-3 rounded-xl hover:bg-purple-600 transition shadow-md flex items-center justify-center">
+                <Send className="w-5 h-5 mr-2" /> 선생님께 보내기
+              </button>
             </form>
           </div>
         </div>
