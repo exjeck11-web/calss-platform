@@ -69,7 +69,7 @@ for (let i = 1; i <= 26; i++) {
 // --- [초기 유저 및 권한 정보 생성] ---
 const INITIAL_USERS = {
   'teacher': { id: 'teacher', name: '담임선생님', role: 'teacher', password: 'teacher', isFirstLogin: false },
-  'teacher2': { id: 'teacher2', name: '교생선생님', role: 'student_teacher', password: '임용합격!', isFirstLogin: false, canPostPhoto: true }
+  'teacher2': { id: 'teacher2', name: '교생선생님', role: 'student_teacher', password: 'dladydgkqrur!', isFirstLogin: false, canPostPhoto: true }
 };
 
 STUDENT_DATA.forEach(student => {
@@ -119,7 +119,7 @@ export default function App() {
   const [notices, setNotices] = useState([]);
   const [photos, setPhotos] = useState([]);
   const [secretMessages, setSecretMessages] = useState([]);
-  const [comments, setComments] = useState([]); // 댓글 데이터 상태 추가
+  const [comments, setComments] = useState([]);
 
   const [meals, setMeals] = useState({ today: { lunch: [], dinner: [] }, tomorrow: { lunch: [], dinner: [] }, loading: true, error: null });
   const [mealDayTab, setMealDayTab] = useState('today');
@@ -140,7 +140,7 @@ export default function App() {
   const [isCompressing, setIsCompressing] = useState(false);
   const [submitError, setSubmitError] = useState('');
   
-  const [newComment, setNewComment] = useState(''); // 새 댓글 작성 상태
+  const [newComment, setNewComment] = useState(''); 
 
   useEffect(() => {
     const fetchMeals = async () => {
@@ -217,7 +217,6 @@ export default function App() {
       setSecretMessages(loadedSecrets);
     });
 
-    // 댓글 실시간 연동
     const commentsRef = collection(db, 'comments');
     const unsubComments = onSnapshot(commentsRef, (snapshot) => {
       const loadedComments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -236,7 +235,7 @@ export default function App() {
       snap.forEach(doc => { dbUsers[doc.id] = doc.data(); });
       
       const merged = Object.keys(INITIAL_USERS)
-        .filter(id => INITIAL_USERS[id].role === 'student') // 학생들만 모달에 표시
+        .filter(id => INITIAL_USERS[id].role === 'student')
         .map(id => dbUsers[id] || INITIAL_USERS[id]);
       
       setAllUsers(merged.sort((a,b) => a.id.localeCompare(b.id)));
@@ -381,7 +380,6 @@ export default function App() {
     } catch (error) { setSubmitError(`전송 실패: ${error.message}`); }
   };
 
-  // --- [댓글 등록 처리 함수] ---
   const submitNewComment = async (e) => {
     e.preventDefault();
     if (!firebaseUser) return;
@@ -396,7 +394,7 @@ export default function App() {
         createdAt: serverTimestamp(),
         date: new Date().toISOString().split('T')[0]
       });
-      setNewComment(''); // 댓글 작성 후 입력창 비우기
+      setNewComment('');
     } catch (error) {
       console.error("댓글 작성 실패:", error);
     }
@@ -418,7 +416,6 @@ export default function App() {
       const collectionName = itemToDelete.collectionType || (itemToDelete.imageUrl ? 'gallery' : 'notices');
       await deleteDoc(doc(db, collectionName, itemToDelete.id));
       
-      // 댓글을 삭제한 경우에는 상세보기 모달이 닫히지 않도록 처리
       if (itemToDelete.collectionType !== 'comments') {
         setSelectedItem(null);
       }
@@ -462,7 +459,11 @@ export default function App() {
       let userData = { ...baseData };
       if (userSnap.exists()) {
         const dbData = userSnap.data();
-        userData.password = dbData.password || baseData.password;
+        if (cleanId === 'teacher' || cleanId === 'teacher2') {
+           userData.password = baseData.password;
+        } else {
+           userData.password = dbData.password || baseData.password;
+        }
         userData.isFirstLogin = dbData.isFirstLogin !== undefined ? dbData.isFirstLogin : baseData.isFirstLogin;
       }
 
@@ -519,7 +520,6 @@ export default function App() {
     return (lastChar - 0xAC00) % 28 > 0 ? '이의' : '의'; 
   };
 
-  // --- [UI 로직 변수들] ---
   const isNoticeTab = activeTab.endsWith('_notice');
   const filteredNotices = notices.filter(notice => {
     if (activeTab === 'teacher_notice') return notice.category === 'teacher' || !notice.category;
@@ -533,8 +533,6 @@ export default function App() {
     (activeTab === 'assessment_notice' && currentUser?.canPostAssessment) ||
     (activeTab === 'other_notice' && currentUser?.canPostOther);
 
-
-  // --- [화면 렌더링 (UI)] ---
 
   if (!currentUser) {
     return (
@@ -627,7 +625,6 @@ export default function App() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-4">
             
-            {/* --- 탭 전환 버튼 --- */}
             <div className="flex space-x-2 border-b border-slate-200 pb-2 overflow-x-auto" style={{scrollbarWidth: 'none'}}>
               <button onClick={() => setActiveTab('teacher_notice')} className={`px-4 py-2 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'teacher_notice' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>선생님 공지</button>
               <button onClick={() => setActiveTab('assessment_notice')} className={`px-4 py-2 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'assessment_notice' ? 'bg-pink-50 text-pink-600 border-b-2 border-pink-600' : 'text-slate-400 hover:text-slate-600'}`}>수행평가</button>
@@ -638,7 +635,6 @@ export default function App() {
               </button>
             </div>
 
-            {/* 분리된 공지사항 화면 */}
             {isNoticeTab && (
               <>
                 <div className="flex justify-between items-center mb-4">
@@ -672,7 +668,6 @@ export default function App() {
                       <div className="mt-4 text-xs text-slate-400 flex justify-between">
                          <span>{notice.author}</span>
                          <div className="flex items-center space-x-2">
-                           {/* 댓글 개수 표시 */}
                            <span className="flex items-center text-blue-400">
                              <MessageCircle className="w-3 h-3 mr-0.5" /> 
                              {comments.filter(c => c.noticeId === notice.id).length}
@@ -687,7 +682,6 @@ export default function App() {
               </>
             )}
 
-            {/* 사진첩 화면 */}
             {activeTab === 'gallery' && (
               <>
                 <div className="flex justify-between items-center mb-2">
@@ -715,7 +709,6 @@ export default function App() {
               </>
             )}
 
-            {/* --- 비밀 쪽지 화면 --- */}
             {activeTab === 'secret' && (
               <>
                 <div className="flex justify-between items-center mb-2">
@@ -772,7 +765,6 @@ export default function App() {
           </div>
 
           <div className="space-y-6">
-            {/* 컴시간 알리미 링크 버튼 */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
               <h2 className="text-lg font-bold flex items-center mb-4"><Clock className="w-5 h-5 mr-2 text-indigo-500" /> 오늘의 시간표</h2>
               <a href="http://www.xn--s39aj90b0nb2xw6xh.kr/" target="_blank" rel="noopener noreferrer" className="flex flex-col items-center justify-center w-full py-8 bg-indigo-50 border border-indigo-100 rounded-2xl group hover:bg-indigo-100 transition shadow-sm">
@@ -782,7 +774,6 @@ export default function App() {
               </a>
             </div>
 
-            {/* 급식 영역 (오늘/내일 선택 기능) */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-lg font-bold flex items-center"><Utensils className="w-5 h-5 mr-2 text-orange-500" /> 급식 메뉴</h2>
@@ -809,7 +800,6 @@ export default function App() {
         </div>
       </main>
 
-      {/* 모달: 선생님 전용 학생 관리 (비밀번호 리셋) */}
       {isStudentManageModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl w-full max-w-xl shadow-2xl p-6 max-h-[90vh] flex flex-col">
@@ -847,7 +837,6 @@ export default function App() {
         </div>
       )}
 
-      {/* 모달: 공지사항 및 사진 상세보기 (확대, 카테고리 이동, 댓글 기능 포함) */}
       {selectedItem && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -889,7 +878,6 @@ export default function App() {
               )}
               {selectedItem.content && <p className="text-slate-700 whitespace-pre-wrap leading-relaxed">{selectedItem.content}</p>}
               
-              {/* --- 댓글 영역 (공지사항인 경우에만 표시) --- */}
               {selectedItem.hasOwnProperty('category') && (
                 <div className="mt-8 border-t border-slate-100 pt-5">
                   <h4 className="font-bold text-sm text-slate-800 mb-4 flex items-center">
@@ -904,7 +892,6 @@ export default function App() {
                           <span className="text-xs text-slate-400">{comment.date}</span>
                         </div>
                         <p className="text-slate-600">{comment.content}</p>
-                        {/* 댓글 삭제 권한 (선생님 또는 댓글 작성자 본인) */}
                         {(currentUser.role === 'teacher' || currentUser.id === comment.authorId) && (
                           <button 
                             onClick={() => setItemToDelete({ id: comment.id, collectionType: 'comments', title: '이 댓글' })} 
@@ -922,7 +909,6 @@ export default function App() {
                     )}
                   </div>
                   
-                  {/* 새 댓글 작성 폼 */}
                   <form onSubmit={submitNewComment} className="flex space-x-2">
                     <input 
                       type="text" 
@@ -941,7 +927,6 @@ export default function App() {
             </div>
 
             <div className="p-4 bg-slate-50 border-t flex justify-between items-center">
-              {/* 카테고리 이동 드롭다운 */}
               <div className="flex items-center space-x-2">
                 {selectedItem.hasOwnProperty('type') && (currentUser.role === 'teacher' || currentUser.id === selectedItem.uploaderId) && (
                   <select
@@ -968,7 +953,6 @@ export default function App() {
         </div>
       )}
 
-      {/* --- 전체화면 사진 확대 모달 (최상단) --- */}
       {zoomedImageUrl && (
         <div className="fixed inset-0 bg-black/95 z-[70] flex items-center justify-center p-4 cursor-zoom-out" onClick={() => setZoomedImageUrl(null)}>
           <button className="absolute top-4 right-4 text-white p-2 bg-white/10 hover:bg-white/30 rounded-full transition" onClick={() => setZoomedImageUrl(null)}>
@@ -978,7 +962,6 @@ export default function App() {
         </div>
       )}
 
-      {/* 모달: 삭제 확인 (게시물 및 댓글 모두 공용 사용) */}
       {itemToDelete && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
           <div className="bg-white p-6 rounded-3xl w-full max-w-sm text-center shadow-2xl">
@@ -992,7 +975,6 @@ export default function App() {
         </div>
       )}
 
-      {/* 모달: 알림장 새 공지 작성 */}
       {isNoticeModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 max-h-[90vh] overflow-y-auto">
@@ -1045,7 +1027,6 @@ export default function App() {
         </div>
       )}
 
-      {/* 모달: 사진첩 업로드 */}
       {isPhotoModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 max-h-[90vh] overflow-y-auto">
@@ -1070,7 +1051,6 @@ export default function App() {
         </div>
       )}
 
-      {/* 모달: 비밀 쪽지 작성 */}
       {isSecretModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6">
