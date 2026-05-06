@@ -27,7 +27,7 @@ import {
   ZoomIn
 } from 'lucide-react';
 
-// --- [선생님 학급 명단 데이터 (수정 금지! 완벽하게 보존했습니다)] ---
+// --- [선생님 학급 명단 데이터] ---
 const STUDENT_DATA = [];
 for (let i = 1; i <= 26; i++) {
   const studentId = `102${String(i).padStart(2, '0')}`;
@@ -66,9 +66,10 @@ for (let i = 1; i <= 26; i++) {
   STUDENT_DATA.push({ id: studentId, name: name, birthMonth: month, birthDay: day });
 }
 
-// 초기 유저 권한 정보 생성
+// --- [초기 유저 및 권한 정보 생성] ---
 const INITIAL_USERS = {
-  'teacher': { id: 'teacher', name: '담임선생님', role: 'teacher', password: 'teacher', isFirstLogin: false }
+  'teacher': { id: 'teacher', name: '담임선생님', role: 'teacher', password: 'teacher', isFirstLogin: false },
+  'teacher2': { id: 'teacher2', name: '교생선생님', role: 'student_teacher', password: '임용합격!', isFirstLogin: false, canPostPhoto: true }
 };
 
 STUDENT_DATA.forEach(student => {
@@ -118,6 +119,7 @@ export default function App() {
   const [notices, setNotices] = useState([]);
   const [photos, setPhotos] = useState([]);
   const [secretMessages, setSecretMessages] = useState([]);
+  const [comments, setComments] = useState([]); // 댓글 데이터 상태 추가
 
   const [meals, setMeals] = useState({ today: { lunch: [], dinner: [] }, tomorrow: { lunch: [], dinner: [] }, loading: true, error: null });
   const [mealDayTab, setMealDayTab] = useState('today');
@@ -137,6 +139,8 @@ export default function App() {
   const [fileType, setFileType] = useState('text');
   const [isCompressing, setIsCompressing] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  
+  const [newComment, setNewComment] = useState(''); // 새 댓글 작성 상태
 
   useEffect(() => {
     const fetchMeals = async () => {
@@ -213,7 +217,15 @@ export default function App() {
       setSecretMessages(loadedSecrets);
     });
 
-    return () => { unsubNotices(); unsubGallery(); unsubSecret(); };
+    // 댓글 실시간 연동
+    const commentsRef = collection(db, 'comments');
+    const unsubComments = onSnapshot(commentsRef, (snapshot) => {
+      const loadedComments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      loadedComments.sort((a, b) => (a.createdAt?.toMillis() || 0) - (b.createdAt?.toMillis() || 0));
+      setComments(loadedComments);
+    });
+
+    return () => { unsubNotices(); unsubGallery(); unsubSecret(); unsubComments(); };
   }, [firebaseUser]);
 
   const loadAllUsersForTeacher = async () => {
@@ -224,7 +236,7 @@ export default function App() {
       snap.forEach(doc => { dbUsers[doc.id] = doc.data(); });
       
       const merged = Object.keys(INITIAL_USERS)
-        .filter(id => id !== 'teacher')
+        .filter(id => INITIAL_USERS[id].role === 'student') // 학생들만 모달에 표시
         .map(id => dbUsers[id] || INITIAL_USERS[id]);
       
       setAllUsers(merged.sort((a,b) => a.id.localeCompare(b.id)));
@@ -369,7 +381,27 @@ export default function App() {
     } catch (error) { setSubmitError(`전송 실패: ${error.message}`); }
   };
 
-  // --- [새로 추가된 기능: 카테고리 이동] ---
+  // --- [댓글 등록 처리 함수] ---
+  const submitNewComment = async (e) => {
+    e.preventDefault();
+    if (!firebaseUser) return;
+    if (!newComment.trim()) return;
+
+    try {
+      await addDoc(collection(db, 'comments'), {
+        noticeId: selectedItem.id,
+        content: newComment,
+        authorName: currentUser.name,
+        authorId: currentUser.id,
+        createdAt: serverTimestamp(),
+        date: new Date().toISOString().split('T')[0]
+      });
+      setNewComment(''); // 댓글 작성 후 입력창 비우기
+    } catch (error) {
+      console.error("댓글 작성 실패:", error);
+    }
+  };
+
   const handleMoveCategory = async (newCategory) => {
     if (!firebaseUser || !selectedItem || !selectedItem.hasOwnProperty('type')) return;
     try {
@@ -385,8 +417,12 @@ export default function App() {
     try {
       const collectionName = itemToDelete.collectionType || (itemToDelete.imageUrl ? 'gallery' : 'notices');
       await deleteDoc(doc(db, collectionName, itemToDelete.id));
+      
+      // 댓글을 삭제한 경우에는 상세보기 모달이 닫히지 않도록 처리
+      if (itemToDelete.collectionType !== 'comments') {
+        setSelectedItem(null);
+      }
       setItemToDelete(null);
-      setSelectedItem(null);
     } catch (error) { 
       setItemToDelete(null); 
     }
@@ -404,6 +440,7 @@ export default function App() {
     setFileType('text'); 
     setIsCompressing(false);
     setSubmitError('');
+    setNewComment('');
   };
 
   const handleLogin = async (e) => {
@@ -475,7 +512,6 @@ export default function App() {
     return upcoming.sort((a, b) => a.dDay - b.dDay);
   };
 
-  // --- [한국어 받침 판별기 (이/가, 의/이의)] ---
   const getPostposition = (name) => {
     if (!name) return '의';
     const lastChar = name.charCodeAt(name.length - 1);
@@ -635,7 +671,14 @@ export default function App() {
                       </div>
                       <div className="mt-4 text-xs text-slate-400 flex justify-between">
                          <span>{notice.author}</span>
-                         <span>{notice.date}</span>
+                         <div className="flex items-center space-x-2">
+                           {/* 댓글 개수 표시 */}
+                           <span className="flex items-center text-blue-400">
+                             <MessageCircle className="w-3 h-3 mr-0.5" /> 
+                             {comments.filter(c => c.noticeId === notice.id).length}
+                           </span>
+                           <span>{notice.date}</span>
+                         </div>
                       </div>
                     </div>
                   ))}
@@ -649,7 +692,7 @@ export default function App() {
               <>
                 <div className="flex justify-between items-center mb-2">
                   <h2 className="text-lg font-bold flex items-center"><Camera className="w-5 h-5 mr-2 text-green-500" /> 추억 사진첩</h2>
-                  {(currentUser.role === 'teacher' || currentUser.canPostPhoto) && (
+                  {(currentUser.role === 'teacher' || currentUser.role === 'student_teacher' || currentUser.canPostPhoto) && (
                     <button onClick={() => setIsPhotoModalOpen(true)} className="flex items-center text-sm bg-green-500 text-white px-3 py-1.5 rounded-lg hover:bg-green-600 transition shadow-sm">
                       <Camera className="w-4 h-4 mr-1" /> 사진 올리기
                     </button>
@@ -804,12 +847,17 @@ export default function App() {
         </div>
       )}
 
-      {/* 모달: 공지사항 및 사진 상세보기 (확대 기능 및 카테고리 이동 기능 포함) */}
+      {/* 모달: 공지사항 및 사진 상세보기 (확대, 카테고리 이동, 댓글 기능 포함) */}
       {selectedItem && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <div className="flex items-center space-x-2">
+                {selectedItem.category && (
+                   <span className={`text-xs font-bold px-2 py-1 rounded-md ${selectedItem.category === 'assessment' ? 'bg-pink-100 text-pink-600' : selectedItem.category === 'other' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>
+                     {selectedItem.category === 'assessment' ? '수행평가' : selectedItem.category === 'other' ? '기타 공지' : '선생님 공지'}
+                   </span>
+                )}
                 <h3 className="font-bold text-lg">{selectedItem.title}</h3>
               </div>
               <button onClick={() => setSelectedItem(null)} className="p-1 rounded-full hover:bg-slate-200 transition"><X className="w-6 h-6 text-slate-500" /></button>
@@ -840,9 +888,59 @@ export default function App() {
                 </div>
               )}
               {selectedItem.content && <p className="text-slate-700 whitespace-pre-wrap leading-relaxed">{selectedItem.content}</p>}
-            </div>
-            <div className="p-4 bg-slate-50 border-t flex justify-between items-center">
               
+              {/* --- 댓글 영역 (공지사항인 경우에만 표시) --- */}
+              {selectedItem.hasOwnProperty('category') && (
+                <div className="mt-8 border-t border-slate-100 pt-5">
+                  <h4 className="font-bold text-sm text-slate-800 mb-4 flex items-center">
+                    <MessageCircle className="w-4 h-4 mr-1 text-slate-500" /> 댓글 {comments.filter(c => c.noticeId === selectedItem.id).length}개
+                  </h4>
+                  
+                  <div className="space-y-3 mb-4 max-h-40 overflow-y-auto pr-2">
+                    {comments.filter(c => c.noticeId === selectedItem.id).map(comment => (
+                      <div key={comment.id} className="bg-slate-50 p-3 rounded-xl text-sm relative group border border-slate-100">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="font-bold text-slate-700">{comment.authorName}</span>
+                          <span className="text-xs text-slate-400">{comment.date}</span>
+                        </div>
+                        <p className="text-slate-600">{comment.content}</p>
+                        {/* 댓글 삭제 권한 (선생님 또는 댓글 작성자 본인) */}
+                        {(currentUser.role === 'teacher' || currentUser.id === comment.authorId) && (
+                          <button 
+                            onClick={() => setItemToDelete({ id: comment.id, collectionType: 'comments', title: '이 댓글' })} 
+                            className="absolute top-3 right-3 text-xs text-red-400 font-bold opacity-0 group-hover:opacity-100 transition hover:text-red-600 bg-slate-50 px-1"
+                          >
+                            삭제
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {comments.filter(c => c.noticeId === selectedItem.id).length === 0 && (
+                      <div className="text-xs text-slate-400 text-center py-4 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                        아직 댓글이 없습니다. 첫 댓글을 남겨보세요!
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* 새 댓글 작성 폼 */}
+                  <form onSubmit={submitNewComment} className="flex space-x-2">
+                    <input 
+                      type="text" 
+                      value={newComment} 
+                      onChange={(e) => setNewComment(e.target.value)} 
+                      placeholder="댓글을 입력하세요..."
+                      className="flex-1 px-4 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-400 outline-none bg-white transition shadow-sm"
+                      required
+                    />
+                    <button type="submit" disabled={!newComment.trim()} className="bg-blue-500 text-white px-5 py-2 rounded-xl text-sm font-bold hover:bg-blue-600 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                      등록
+                    </button>
+                  </form>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t flex justify-between items-center">
               {/* 카테고리 이동 드롭다운 */}
               <div className="flex items-center space-x-2">
                 {selectedItem.hasOwnProperty('type') && (currentUser.role === 'teacher' || currentUser.id === selectedItem.uploaderId) && (
@@ -880,12 +978,12 @@ export default function App() {
         </div>
       )}
 
-      {/* 모달: 삭제 확인 */}
+      {/* 모달: 삭제 확인 (게시물 및 댓글 모두 공용 사용) */}
       {itemToDelete && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
           <div className="bg-white p-6 rounded-3xl w-full max-w-sm text-center shadow-2xl">
-            <h3 className="text-lg font-bold text-slate-800 mb-2">게시물 삭제</h3>
-            <p className="text-slate-500 mb-6 text-sm">정말 이 게시물을 삭제할까요?<br/>삭제 후에는 복구할 수 없습니다.</p>
+            <h3 className="text-lg font-bold text-slate-800 mb-2">{itemToDelete?.title === '이 댓글' ? '댓글 삭제' : '게시물 삭제'}</h3>
+            <p className="text-slate-500 mb-6 text-sm">정말 {itemToDelete?.title === '이 댓글' ? '이 댓글' : '이 게시물'}을 삭제할까요?<br/>삭제 후에는 복구할 수 없습니다.</p>
             <div className="flex space-x-3">
               <button onClick={() => setItemToDelete(null)} className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl font-bold hover:bg-slate-200 transition">취소</button>
               <button onClick={executeDelete} className="flex-1 bg-red-500 text-white py-3 rounded-xl font-bold hover:bg-red-600 transition shadow-md">삭제하기</button>
@@ -933,7 +1031,7 @@ export default function App() {
                   <input type="file" className="hidden" accept="image/*, application/pdf" onChange={handleFileChange} disabled={isCompressing} />
                 </div>
               </label>
-              {fileType === 'image' && filePreviewUrl && (
+              {filePreviewUrl && (
                 <div className="mt-2 relative inline-block">
                   <img src={filePreviewUrl} alt="미리보기" className="h-24 rounded-lg object-cover border" />
                   <button type="button" onClick={() => { setSelectedFile(null); setFilePreviewUrl(null); setFileType('text'); }} className="absolute -top-2 -right-2 bg-white rounded-full shadow-md p-1"><X className="w-3 h-3 text-red-500" /></button>
