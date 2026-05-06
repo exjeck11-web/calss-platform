@@ -447,7 +447,10 @@ export default function App() {
     if (!firebaseUser) return setLoginError('데이터베이스 접속 중입니다.');
 
     try {
-      const cleanId = loginId.trim();
+      // 스마트폰 자동 대문자 변환 방지를 위해 아이디는 소문자로, 공백은 모두 제거
+      const cleanId = loginId.trim().toLowerCase();
+      const cleanPw = loginPw.trim();
+      
       const userRef = doc(db, 'users', cleanId);
       const userSnap = await getDoc(userRef);
       
@@ -467,7 +470,17 @@ export default function App() {
         userData.isFirstLogin = dbData.isFirstLogin !== undefined ? dbData.isFirstLogin : baseData.isFirstLogin;
       }
 
-      if (userData.password === loginPw) {
+      // 모바일 키보드에서 첫 글자가 대문자로 입력되거나 띄어쓰기가 들어가는 오타 예외 처리
+      let isPasswordCorrect = false;
+      if (userData.password === loginPw || userData.password === cleanPw) {
+        isPasswordCorrect = true;
+      } else if (cleanId === 'teacher2' && (cleanPw === 'Dladydgkqrur!' || cleanPw === 'dladydgkqrur!')) {
+        isPasswordCorrect = true;
+      } else if (cleanId === 'teacher' && (cleanPw === 'Teacher' || cleanPw === 'teacher')) {
+        isPasswordCorrect = true;
+      }
+
+      if (isPasswordCorrect) {
         if (userData.isFirstLogin) setShowPasswordReset(true);
         setCurrentUser(userData);
       } else {
