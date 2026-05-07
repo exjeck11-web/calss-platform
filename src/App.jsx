@@ -555,7 +555,7 @@ export default function App() {
             <User className="text-orange-500 w-10 h-10" />
           </div>
           <h1 className="text-2xl font-bold text-slate-800 mb-2">서전고 1학년 2반</h1>
-          <p className="text-slate-500 mb-8 text-sm">동물과 파충류 통합 알림장</p>
+          <p className="text-slate-500 mb-8 text-sm">맹꽁몽구스 통합 알림장</p>
           <form onSubmit={handleLogin} className="space-y-4">
             <input type="text" placeholder="학번 (예: 10201) 또는 아이디" className="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-orange-400 bg-slate-50" value={loginId} onChange={(e) => setLoginId(e.target.value)} />
             <input type="password" placeholder="비밀번호" className="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-orange-400 bg-slate-50" value={loginPw} onChange={(e) => setLoginPw(e.target.value)} />
@@ -594,7 +594,7 @@ export default function App() {
             <div className="bg-emerald-100 p-2 rounded-xl">
               <BookOpen className="text-emerald-600 w-6 h-6" />
             </div>
-            <h1 className="text-xl font-bold">서전고 1-2 동물과 파충류</h1>
+            <h1 className="text-xl font-bold">서전고 1-2 맹꽁몽구스</h1>
           </div>
           <div className="flex items-center space-x-4">
             <div className="hidden md:flex items-center text-sm font-medium text-slate-600 bg-white px-3 py-1.5 rounded-full border shadow-sm">
