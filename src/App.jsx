@@ -102,7 +102,9 @@ const db = getFirestore(app);
 
 // --- [메인 컴포넌트 시작] ---
 export default function App() {
+  // 로그인 상태 및 모달 제어
   const [currentUser, setCurrentUser] = useState(null);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false); // 로그인 모달 상태 추가
   const [loginId, setLoginId] = useState('');
   const [loginPw, setLoginPw] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -382,7 +384,7 @@ export default function App() {
 
   const submitNewComment = async (e) => {
     e.preventDefault();
-    if (!firebaseUser) return;
+    if (!firebaseUser || !currentUser) return;
     if (!newComment.trim()) return;
 
     try {
@@ -440,6 +442,18 @@ export default function App() {
     setNewComment('');
   };
 
+  const closeLoginModal = () => {
+    setIsLoginModalOpen(false);
+    setLoginId('');
+    setLoginPw('');
+    setLoginError('');
+    // 만약 비밀번호 재설정 중 창을 닫으면 취소 처리 (로그인 안 됨)
+    if (showPasswordReset) {
+      setCurrentUser(null);
+      setShowPasswordReset(false);
+    }
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoginError('');
@@ -447,7 +461,6 @@ export default function App() {
     if (!firebaseUser) return setLoginError('데이터베이스 접속 중입니다.');
 
     try {
-      // 스마트폰 자동 대문자 변환 방지를 위해 아이디는 소문자로, 공백은 모두 제거
       const cleanId = loginId.trim().toLowerCase();
       const cleanPw = loginPw.trim();
       
@@ -470,7 +483,6 @@ export default function App() {
         userData.isFirstLogin = dbData.isFirstLogin !== undefined ? dbData.isFirstLogin : baseData.isFirstLogin;
       }
 
-      // 모바일 키보드에서 첫 글자가 대문자로 입력되거나 띄어쓰기가 들어가는 오타 예외 처리
       let isPasswordCorrect = false;
       if (userData.password === loginPw || userData.password === cleanPw) {
         isPasswordCorrect = true;
@@ -481,8 +493,13 @@ export default function App() {
       }
 
       if (isPasswordCorrect) {
-        if (userData.isFirstLogin) setShowPasswordReset(true);
-        setCurrentUser(userData);
+        if (userData.isFirstLogin) {
+          setShowPasswordReset(true);
+          setCurrentUser(userData); // 재설정을 위해 임시 할당
+        } else {
+          setCurrentUser(userData);
+          closeLoginModal(); // 정상 로그인 완료 후 모달 닫기
+        }
       } else {
         setLoginError('학번 또는 비밀번호가 틀렸습니다.');
       }
@@ -547,44 +564,12 @@ export default function App() {
     (activeTab === 'other_notice' && currentUser?.canPostOther);
 
 
-  if (!currentUser) {
-    return (
-      <div className="min-h-screen bg-orange-50 flex flex-col items-center justify-center p-4">
-        <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-md text-center">
-          <div className="bg-orange-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
-            <User className="text-orange-500 w-10 h-10" />
-          </div>
-          <h1 className="text-2xl font-bold text-slate-800 mb-2">서전고 1학년 2반</h1>
-          <p className="text-slate-500 mb-8 text-sm">맹꽁몽구스 통합 알림장</p>
-          <form onSubmit={handleLogin} className="space-y-4">
-            <input type="text" placeholder="학번 (예: 10201) 또는 아이디" className="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-orange-400 bg-slate-50" value={loginId} onChange={(e) => setLoginId(e.target.value)} />
-            <input type="password" placeholder="비밀번호" className="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-orange-400 bg-slate-50" value={loginPw} onChange={(e) => setLoginPw(e.target.value)} />
-            {loginError && <p className="text-red-500 text-sm text-left">{loginError}</p>}
-            <button type="submit" className="w-full bg-orange-500 text-white font-bold py-3 rounded-xl hover:bg-orange-600 transition shadow-md">입장하기</button>
-          </form>
-        </div>
-      </div>
-    );
-  }
+  // --- [화면 렌더링 (UI)] ---
+  // 이제 currentUser가 없어도 첫 화면(메인 컨텐츠)을 보여줍니다!
 
-  if (showPasswordReset) {
-    return (
-      <div className="min-h-screen bg-orange-50 flex flex-col items-center justify-center p-4">
-        <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-md">
-          <h2 className="text-xl font-bold text-slate-800 mb-4">비밀번호 재설정</h2>
-          <p className="text-slate-600 mb-6 text-sm">안전을 위해 새로운 비밀번호를 설정해 주세요.</p>
-          <form onSubmit={handlePasswordReset} className="space-y-4">
-            <input type="password" placeholder="새 비밀번호 입력" className="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-orange-400" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required />
-            <button type="submit" className="w-full bg-slate-800 text-white font-bold py-3 rounded-xl hover:bg-slate-700">변경 및 시작하기</button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
-  const upcomingBirthdays = getUpcomingBirthdays();
   const todayDate = new Date();
   const formattedToday = `${todayDate.getFullYear()}년 ${todayDate.getMonth() + 1}월 ${todayDate.getDate()}일 ${['일', '월', '화', '수', '목', '금', '토'][todayDate.getDay()]}요일`;
+  const upcomingBirthdays = getUpcomingBirthdays();
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] text-slate-800 font-sans pb-10">
@@ -594,7 +579,7 @@ export default function App() {
             <div className="bg-emerald-100 p-2 rounded-xl">
               <BookOpen className="text-emerald-600 w-6 h-6" />
             </div>
-            <h1 className="text-xl font-bold">서전고 1-2 맹꽁몽구스</h1>
+            <h1 className="text-xl font-bold">서전고 1-2 맹꽁몽구스 1기 </h1>
           </div>
           <div className="flex items-center space-x-4">
             <div className="hidden md:flex items-center text-sm font-medium text-slate-600 bg-white px-3 py-1.5 rounded-full border shadow-sm">
@@ -604,15 +589,27 @@ export default function App() {
               <Sun className="w-4 h-4 mr-2 text-orange-400" /> <span>진천군 맑음, 22°C</span>
             </div>
             <div className="flex items-center space-x-2">
-              <span className="text-sm font-semibold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full">{currentUser.name}</span>
-              
-              {currentUser.role === 'teacher' && (
-                 <button onClick={loadAllUsersForTeacher} className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-full transition" title="학생 계정 관리">
-                   <Users className="w-5 h-5" />
-                 </button>
-              )}
+              {/* 로그인 상태에 따라 버튼 변경 */}
+              {!currentUser ? (
+                <button 
+                  onClick={() => setIsLoginModalOpen(true)} 
+                  className="text-sm font-bold bg-blue-500 text-white px-4 py-1.5 rounded-full hover:bg-blue-600 transition shadow-sm"
+                >
+                  로그인
+                </button>
+              ) : (
+                <>
+                  <span className="text-sm font-semibold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full">{currentUser.name}</span>
+                  
+                  {currentUser.role === 'teacher' && (
+                     <button onClick={loadAllUsersForTeacher} className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-full transition" title="학생 계정 관리">
+                       <Users className="w-5 h-5" />
+                     </button>
+                  )}
 
-              <button onClick={() => { setCurrentUser(null); setLoginId(''); setLoginPw(''); }} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition" title="로그아웃"><LogOut className="w-5 h-5" /></button>
+                  <button onClick={() => { setCurrentUser(null); setLoginId(''); setLoginPw(''); }} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition" title="로그아웃"><LogOut className="w-5 h-5" /></button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -657,7 +654,8 @@ export default function App() {
                      <Bell className="w-5 h-5 mr-2 text-orange-500" /> }
                     {activeTab === 'teacher_notice' ? '선생님 공지사항' : activeTab === 'assessment_notice' ? '수행평가 안내' : '기타 학급 공지'}
                   </h2>
-                  {canPostInCurrentTab && (
+                  {/* 로그인 안 한 유저는 글쓰기 버튼이 보이지 않음 */}
+                  {currentUser && canPostInCurrentTab && (
                     <button onClick={openNoticeModal} className="flex items-center text-sm bg-blue-500 text-white px-3 py-1.5 rounded-lg hover:bg-blue-600 transition shadow-sm">
                       <PlusCircle className="w-4 h-4 mr-1" /> 글 쓰기
                     </button>
@@ -699,7 +697,7 @@ export default function App() {
               <>
                 <div className="flex justify-between items-center mb-2">
                   <h2 className="text-lg font-bold flex items-center"><Camera className="w-5 h-5 mr-2 text-green-500" /> 추억 사진첩</h2>
-                  {(currentUser.role === 'teacher' || currentUser.role === 'student_teacher' || currentUser.canPostPhoto) && (
+                  {currentUser && (currentUser.role === 'teacher' || currentUser.role === 'student_teacher' || currentUser.canPostPhoto) && (
                     <button onClick={() => setIsPhotoModalOpen(true)} className="flex items-center text-sm bg-green-500 text-white px-3 py-1.5 rounded-lg hover:bg-green-600 transition shadow-sm">
                       <Camera className="w-4 h-4 mr-1" /> 사진 올리기
                     </button>
@@ -726,53 +724,65 @@ export default function App() {
               <>
                 <div className="flex justify-between items-center mb-2">
                   <h2 className="text-lg font-bold flex items-center"><Lock className="w-5 h-5 mr-2 text-purple-500" /> 비밀 쪽지함</h2>
-                  {currentUser.role === 'student' && (
+                  {currentUser?.role === 'student' && (
                     <button onClick={() => setIsSecretModalOpen(true)} className="flex items-center text-sm bg-purple-500 text-white px-3 py-1.5 rounded-lg hover:bg-purple-600 transition shadow-sm">
                       <Send className="w-4 h-4 mr-1" /> 쪽지 쓰기
                     </button>
                   )}
                 </div>
 
-                <div className="bg-purple-50 p-4 rounded-2xl mb-4 border border-purple-100 flex items-start">
-                   <ShieldCheck className="w-5 h-5 text-purple-500 mr-2 mt-0.5 flex-shrink-0" />
-                   <p className="text-sm text-purple-700">
-                     {currentUser.role === 'teacher' 
-                       ? '아이들이 보낸 비밀 쪽지함입니다. 선생님만 볼 수 있습니다.' 
-                       : '선생님에게만 보이는 비밀 쪽지함입니다. 고민이나 하고 싶은 말을 편하게 남겨주세요!'}
-                   </p>
-                </div>
+                {!currentUser ? (
+                  <div className="py-16 text-center text-slate-400 bg-white rounded-2xl border border-dashed flex flex-col items-center">
+                    <Lock className="w-10 h-10 mb-3 text-purple-200" />
+                    <p className="mb-4 text-slate-500">선생님과 학생만 확인할 수 있는 비밀 공간입니다.</p>
+                    <button onClick={() => setIsLoginModalOpen(true)} className="bg-purple-500 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-purple-600 transition shadow-sm">
+                      로그인하고 비밀 쪽지 확인하기
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="bg-purple-50 p-4 rounded-2xl mb-4 border border-purple-100 flex items-start">
+                       <ShieldCheck className="w-5 h-5 text-purple-500 mr-2 mt-0.5 flex-shrink-0" />
+                       <p className="text-sm text-purple-700">
+                         {currentUser.role === 'teacher' 
+                           ? '아이들이 보낸 비밀 쪽지함입니다. 선생님만 볼 수 있습니다.' 
+                           : '선생님에게만 보이는 비밀 쪽지함입니다. 고민이나 하고 싶은 말을 편하게 남겨주세요!'}
+                       </p>
+                    </div>
 
-                <div className="grid grid-cols-1 gap-4">
-                  {secretMessages
-                    .filter(msg => currentUser.role === 'teacher' || msg.senderId === currentUser.id)
-                    .map((msg) => (
-                    <div key={msg.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 relative group">
-                      <div className="flex justify-between items-start mb-3">
-                        <div className="flex items-center space-x-2">
-                          <div className="bg-purple-100 p-1.5 rounded-full"><User className="w-4 h-4 text-purple-600"/></div>
-                          <span className="font-bold text-slate-800">{currentUser.role === 'teacher' ? msg.senderName : '내가 보낸 쪽지'}</span>
+                    <div className="grid grid-cols-1 gap-4">
+                      {secretMessages
+                        .filter(msg => currentUser.role === 'teacher' || msg.senderId === currentUser.id)
+                        .map((msg) => (
+                        <div key={msg.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 relative group">
+                          <div className="flex justify-between items-start mb-3">
+                            <div className="flex items-center space-x-2">
+                              <div className="bg-purple-100 p-1.5 rounded-full"><User className="w-4 h-4 text-purple-600"/></div>
+                              <span className="font-bold text-slate-800">{currentUser.role === 'teacher' ? msg.senderName : '내가 보낸 쪽지'}</span>
+                            </div>
+                            <span className="text-xs text-slate-400">{msg.date}</span>
+                          </div>
+                          <p className="text-sm text-slate-700 whitespace-pre-wrap bg-slate-50 p-4 rounded-xl leading-relaxed">{msg.content}</p>
+                          
+                          {currentUser.role === 'teacher' && (
+                             <button 
+                               onClick={() => setItemToDelete({ ...msg, collectionType: 'secretMessages' })} 
+                               className="absolute top-4 right-4 text-xs text-red-400 hover:text-red-600 font-bold opacity-0 group-hover:opacity-100 transition"
+                             >
+                               삭제
+                             </button>
+                          )}
                         </div>
-                        <span className="text-xs text-slate-400">{msg.date}</span>
-                      </div>
-                      <p className="text-sm text-slate-700 whitespace-pre-wrap bg-slate-50 p-4 rounded-xl leading-relaxed">{msg.content}</p>
-                      
-                      {currentUser.role === 'teacher' && (
-                         <button 
-                           onClick={() => setItemToDelete({ ...msg, collectionType: 'secretMessages' })} 
-                           className="absolute top-4 right-4 text-xs text-red-400 hover:text-red-600 font-bold opacity-0 group-hover:opacity-100 transition"
-                         >
-                           삭제
-                         </button>
+                      ))}
+                      {secretMessages.filter(msg => currentUser.role === 'teacher' || msg.senderId === currentUser.id).length === 0 && (
+                        <div className="py-10 text-center text-slate-400 bg-white rounded-2xl border border-dashed flex flex-col items-center">
+                          <MessageCircle className="w-8 h-8 mb-2 text-slate-300" />
+                          {currentUser.role === 'teacher' ? '아직 도착한 비밀 쪽지가 없습니다.' : '선생님께 보낸 비밀 쪽지가 없습니다.'}
+                        </div>
                       )}
                     </div>
-                  ))}
-                  {secretMessages.filter(msg => currentUser.role === 'teacher' || msg.senderId === currentUser.id).length === 0 && (
-                    <div className="py-10 text-center text-slate-400 bg-white rounded-2xl border border-dashed flex flex-col items-center">
-                      <MessageCircle className="w-8 h-8 mb-2 text-slate-300" />
-                      {currentUser.role === 'teacher' ? '아직 도착한 비밀 쪽지가 없습니다.' : '선생님께 보낸 비밀 쪽지가 없습니다.'}
-                    </div>
-                  )}
-                </div>
+                  </>
+                )}
               </>
             )}
           </div>
@@ -813,6 +823,46 @@ export default function App() {
         </div>
       </main>
 
+      {/* --- 로그인 모달 --- */}
+      {isLoginModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-[80]">
+          <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md relative">
+            <button onClick={closeLoginModal} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 p-2 rounded-full transition">
+              <X className="w-5 h-5" />
+            </button>
+
+            {!showPasswordReset ? (
+              <div className="text-center">
+                <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <User className="text-blue-500 w-8 h-8" />
+                </div>
+                <h2 className="text-2xl font-bold text-slate-800 mb-2">로그인</h2>
+                <p className="text-slate-500 mb-6 text-sm">글 작성 및 댓글을 남기려면 로그인해주세요.</p>
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <input type="text" placeholder="학번 (예: 10201) 또는 아이디" className="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-blue-400 bg-slate-50 outline-none" value={loginId} onChange={(e) => setLoginId(e.target.value)} />
+                  <input type="password" placeholder="비밀번호" className="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-blue-400 bg-slate-50 outline-none" value={loginPw} onChange={(e) => setLoginPw(e.target.value)} />
+                  {loginError && <p className="text-red-500 text-sm text-left">{loginError}</p>}
+                  <button type="submit" className="w-full bg-blue-500 text-white font-bold py-3 rounded-xl hover:bg-blue-600 transition shadow-md">로그인하기</button>
+                </form>
+              </div>
+            ) : (
+              <div className="text-center">
+                <div className="bg-orange-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Lock className="text-orange-500 w-8 h-8" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-800 mb-4">비밀번호 재설정</h2>
+                <p className="text-slate-600 mb-6 text-sm">안전을 위해 새로운 비밀번호를 설정해 주세요.</p>
+                <form onSubmit={handlePasswordReset} className="space-y-4">
+                  <input type="password" placeholder="새 비밀번호 입력" className="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-orange-400 outline-none" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required />
+                  <button type="submit" className="w-full bg-slate-800 text-white font-bold py-3 rounded-xl hover:bg-slate-700">변경 및 다시 로그인</button>
+                </form>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 모달: 선생님 전용 학생 관리 (비밀번호 리셋) */}
       {isStudentManageModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl w-full max-w-xl shadow-2xl p-6 max-h-[90vh] flex flex-col">
@@ -850,6 +900,7 @@ export default function App() {
         </div>
       )}
 
+      {/* 모달: 공지사항 및 사진 상세보기 (확대, 카테고리 이동, 댓글 기능 포함) */}
       {selectedItem && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -891,6 +942,7 @@ export default function App() {
               )}
               {selectedItem.content && <p className="text-slate-700 whitespace-pre-wrap leading-relaxed">{selectedItem.content}</p>}
               
+              {/* --- 댓글 영역 --- */}
               {selectedItem.hasOwnProperty('category') && (
                 <div className="mt-8 border-t border-slate-100 pt-5">
                   <h4 className="font-bold text-sm text-slate-800 mb-4 flex items-center">
@@ -905,7 +957,8 @@ export default function App() {
                           <span className="text-xs text-slate-400">{comment.date}</span>
                         </div>
                         <p className="text-slate-600">{comment.content}</p>
-                        {(currentUser.role === 'teacher' || currentUser.id === comment.authorId) && (
+                        {/* 선생님 또는 댓글 작성자 본인만 삭제 가능 */}
+                        {(currentUser?.role === 'teacher' || currentUser?.id === comment.authorId) && (
                           <button 
                             onClick={() => setItemToDelete({ id: comment.id, collectionType: 'comments', title: '이 댓글' })} 
                             className="absolute top-3 right-3 text-xs text-red-400 font-bold opacity-0 group-hover:opacity-100 transition hover:text-red-600 bg-slate-50 px-1"
@@ -922,26 +975,42 @@ export default function App() {
                     )}
                   </div>
                   
-                  <form onSubmit={submitNewComment} className="flex space-x-2">
-                    <input 
-                      type="text" 
-                      value={newComment} 
-                      onChange={(e) => setNewComment(e.target.value)} 
-                      placeholder="댓글을 입력하세요..."
-                      className="flex-1 px-4 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-400 outline-none bg-white transition shadow-sm"
-                      required
-                    />
-                    <button type="submit" disabled={!newComment.trim()} className="bg-blue-500 text-white px-5 py-2 rounded-xl text-sm font-bold hover:bg-blue-600 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
-                      등록
-                    </button>
-                  </form>
+                  {/* 로그인 안 된 경우 로그인 유도, 로그인 된 경우 폼 표시 */}
+                  {!currentUser ? (
+                    <div className="flex space-x-2">
+                      <input 
+                        type="text" 
+                        readOnly
+                        onClick={() => setIsLoginModalOpen(true)}
+                        placeholder="로그인 후 댓글을 남길 수 있습니다."
+                        className="flex-1 px-4 py-2 border border-slate-200 rounded-xl text-sm bg-slate-50 text-slate-400 cursor-pointer outline-none"
+                      />
+                      <button type="button" onClick={() => setIsLoginModalOpen(true)} className="bg-slate-300 text-white px-5 py-2 rounded-xl text-sm font-bold hover:bg-slate-400 transition shadow-sm">
+                        로그인
+                      </button>
+                    </div>
+                  ) : (
+                    <form onSubmit={submitNewComment} className="flex space-x-2">
+                      <input 
+                        type="text" 
+                        value={newComment} 
+                        onChange={(e) => setNewComment(e.target.value)} 
+                        placeholder="댓글을 입력하세요..."
+                        className="flex-1 px-4 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-400 outline-none bg-white transition shadow-sm"
+                        required
+                      />
+                      <button type="submit" disabled={!newComment.trim()} className="bg-blue-500 text-white px-5 py-2 rounded-xl text-sm font-bold hover:bg-blue-600 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                        등록
+                      </button>
+                    </form>
+                  )}
                 </div>
               )}
             </div>
 
             <div className="p-4 bg-slate-50 border-t flex justify-between items-center">
               <div className="flex items-center space-x-2">
-                {selectedItem.hasOwnProperty('type') && (currentUser.role === 'teacher' || currentUser.id === selectedItem.uploaderId) && (
+                {selectedItem.hasOwnProperty('type') && (currentUser?.role === 'teacher' || currentUser?.id === selectedItem.uploaderId) && (
                   <select
                     className="text-xs font-bold border border-slate-300 rounded-xl px-3 py-2 bg-white text-slate-700 outline-none focus:ring-2 focus:ring-blue-400 cursor-pointer shadow-sm transition"
                     value={selectedItem.category || 'teacher'}
@@ -956,7 +1025,7 @@ export default function App() {
               </div>
 
               <div className="flex space-x-2">
-                {(currentUser.role === 'teacher' || currentUser.id === selectedItem.uploaderId) && (
+                {(currentUser?.role === 'teacher' || currentUser?.id === selectedItem.uploaderId) && (
                   <button onClick={() => setItemToDelete(selectedItem)} className="text-red-500 font-semibold px-4 py-2 rounded-xl hover:bg-red-50 transition">삭제</button>
                 )}
                 <button onClick={() => setSelectedItem(null)} className="bg-slate-800 text-white px-6 py-2 rounded-xl font-semibold hover:bg-slate-700 transition">확인</button>
@@ -988,6 +1057,7 @@ export default function App() {
         </div>
       )}
 
+      {/* 모달: 알림장 새 공지 작성 */}
       {isNoticeModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 max-h-[90vh] overflow-y-auto">
@@ -998,19 +1068,19 @@ export default function App() {
             <form onSubmit={submitNewNotice} className="space-y-4">
               
               <div className="flex space-x-2">
-                {currentUser.role === 'teacher' && (
+                {currentUser?.role === 'teacher' && (
                   <label className={`flex-1 text-center py-2.5 rounded-xl cursor-pointer font-bold text-sm transition ${newNoticeCategory === 'teacher' ? 'bg-blue-500 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
                     <input type="radio" name="category" value="teacher" checked={newNoticeCategory === 'teacher'} onChange={(e) => setNewNoticeCategory(e.target.value)} className="hidden" />
                     선생님 공지
                   </label>
                 )}
-                {(currentUser.role === 'teacher' || currentUser.canPostAssessment) && (
+                {(currentUser?.role === 'teacher' || currentUser?.canPostAssessment) && (
                   <label className={`flex-1 text-center py-2.5 rounded-xl cursor-pointer font-bold text-sm transition ${newNoticeCategory === 'assessment' ? 'bg-pink-500 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
                     <input type="radio" name="category" value="assessment" checked={newNoticeCategory === 'assessment'} onChange={(e) => setNewNoticeCategory(e.target.value)} className="hidden" />
                     수행평가
                   </label>
                 )}
-                {(currentUser.role === 'teacher' || currentUser.canPostOther) && (
+                {(currentUser?.role === 'teacher' || currentUser?.canPostOther) && (
                   <label className={`flex-1 text-center py-2.5 rounded-xl cursor-pointer font-bold text-sm transition ${newNoticeCategory === 'other' ? 'bg-orange-500 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
                     <input type="radio" name="category" value="other" checked={newNoticeCategory === 'other'} onChange={(e) => setNewNoticeCategory(e.target.value)} className="hidden" />
                     기타 공지
@@ -1040,6 +1110,7 @@ export default function App() {
         </div>
       )}
 
+      {/* 모달: 사진첩 업로드 */}
       {isPhotoModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 max-h-[90vh] overflow-y-auto">
@@ -1064,6 +1135,7 @@ export default function App() {
         </div>
       )}
 
+      {/* 모달: 비밀 쪽지 작성 */}
       {isSecretModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6">
