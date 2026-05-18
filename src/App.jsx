@@ -652,7 +652,7 @@ export default function App() {
                     {activeTab === 'teacher_notice' ? <Bell className="w-5 h-5 mr-2 text-blue-500" /> :
                      activeTab === 'assessment_notice' ? <FileText className="w-5 h-5 mr-2 text-pink-500" /> :
                      <Bell className="w-5 h-5 mr-2 text-orange-500" /> }
-                    {activeTab === 'teacher_notice' ? '선생님 공지사항' : activeTab === 'assessment_notice' ? '수행평가 안내' : '기타 학급 공지'}
+                    {activeTab === 'teacher_notice' ? '선생님 공지사항' : activeTab === 'assessment_notice' ? '수행평가 안내' : '학교행사 공지'}
                   </h2>
                   {/* 로그인 안 한 유저는 글쓰기 버튼이 보이지 않음 */}
                   {currentUser && canPostInCurrentTab && (
@@ -908,7 +908,7 @@ export default function App() {
               <div className="flex items-center space-x-2">
                 {selectedItem.category && (
                    <span className={`text-xs font-bold px-2 py-1 rounded-md ${selectedItem.category === 'assessment' ? 'bg-pink-100 text-pink-600' : selectedItem.category === 'other' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>
-                     {selectedItem.category === 'assessment' ? '수행평가' : selectedItem.category === 'other' ? '기타 공지' : '선생님 공지'}
+                     {selectedItem.category === 'assessment' ? '수행평가' : selectedItem.category === 'other' ? '학교행사 공지' : '선생님 공지'}
                    </span>
                 )}
                 <h3 className="font-bold text-lg">{selectedItem.title}</h3>
@@ -1019,7 +1019,7 @@ export default function App() {
                     <option value="" disabled>카테고리 이동</option>
                     <option value="teacher" disabled={currentUser.role !== 'teacher'}>➡️ 선생님 공지</option>
                     <option value="assessment" disabled={currentUser.role !== 'teacher' && !currentUser.canPostAssessment}>➡️ 수행평가</option>
-                    <option value="other" disabled={currentUser.role !== 'teacher' && !currentUser.canPostOther}>➡️ 기타 공지</option>
+                    <option value="other" disabled={currentUser.role !== 'teacher' && !currentUser.canPostOther}>➡️ 학교행사 공지</option>
                   </select>
                 )}
               </div>
@@ -1083,7 +1083,7 @@ export default function App() {
                 {(currentUser?.role === 'teacher' || currentUser?.canPostOther) && (
                   <label className={`flex-1 text-center py-2.5 rounded-xl cursor-pointer font-bold text-sm transition ${newNoticeCategory === 'other' ? 'bg-orange-500 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
                     <input type="radio" name="category" value="other" checked={newNoticeCategory === 'other'} onChange={(e) => setNewNoticeCategory(e.target.value)} className="hidden" />
-                    기타 공지
+                    학교행사 공지
                   </label>
                 )}
               </div>
