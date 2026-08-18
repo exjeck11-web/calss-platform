@@ -6,6 +6,10 @@ import {
   Calendar, 
   Utensils, 
   Sun, 
+  Cloud,
+  CloudRain,
+  Snowflake,
+  CloudLightning,
   Bell, 
   User, 
   LogOut, 
@@ -102,9 +106,8 @@ const db = getFirestore(app);
 
 // --- [메인 컴포넌트 시작] ---
 export default function App() {
-  // 로그인 상태 및 모달 제어
   const [currentUser, setCurrentUser] = useState(null);
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false); // 로그인 모달 상태 추가
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginId, setLoginId] = useState('');
   const [loginPw, setLoginPw] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -126,6 +129,9 @@ export default function App() {
   const [meals, setMeals] = useState({ today: { lunch: [], dinner: [] }, tomorrow: { lunch: [], dinner: [] }, loading: true, error: null });
   const [mealDayTab, setMealDayTab] = useState('today');
 
+  // 날씨 상태 추가
+  const [weather, setWeather] = useState({ temp: null, description: '날씨 정보 없음', icon: Sun, color: 'text-orange-400' });
+
   const [isNoticeModalOpen, setIsNoticeModalOpen] = useState(false);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
   const [isSecretModalOpen, setIsSecretModalOpen] = useState(false);
@@ -144,6 +150,47 @@ export default function App() {
   
   const [newComment, setNewComment] = useState(''); 
 
+  // --- 실시간 날씨 API 연동 (진천군) ---
+  useEffect(() => {
+    const fetchWeather = async () => {
+      try {
+        // 진천군 위도(latitude), 경도(longitude)
+        const lat = 36.8553;
+        const lon = 127.4356;
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&timezone=Asia%2FSeoul`;
+        
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (data.current_weather) {
+          const temp = Math.round(data.current_weather.temperature);
+          const code = data.current_weather.weathercode;
+          
+          let desc = '맑음';
+          let WIcon = Sun;
+          let color = 'text-orange-400';
+
+          // WMO Weather interpretation codes
+          if (code === 0) { desc = '맑음'; WIcon = Sun; color = 'text-orange-400'; }
+          else if (code === 1 || code === 2) { desc = '구름 조금'; WIcon = Cloud; color = 'text-slate-400'; }
+          else if (code === 3) { desc = '흐림'; WIcon = Cloud; color = 'text-slate-500'; }
+          else if (code >= 45 && code <= 48) { desc = '안개'; WIcon = Cloud; color = 'text-slate-400'; }
+          else if (code >= 51 && code <= 67) { desc = '비'; WIcon = CloudRain; color = 'text-blue-500'; }
+          else if (code >= 71 && code <= 77) { desc = '눈'; WIcon = Snowflake; color = 'text-blue-300'; }
+          else if (code >= 80 && code <= 82) { desc = '소나기'; WIcon = CloudRain; color = 'text-blue-500'; }
+          else if (code >= 85 && code <= 86) { desc = '눈'; WIcon = Snowflake; color = 'text-blue-300'; }
+          else if (code >= 95) { desc = '천둥번개'; WIcon = CloudLightning; color = 'text-yellow-500'; }
+
+          setWeather({ temp, description: desc, icon: WIcon, color });
+        }
+      } catch (error) {
+        console.error("날씨 정보를 불러오지 못했습니다.", error);
+      }
+    };
+    fetchWeather();
+  }, []);
+
+  // --- 급식 API 연동 ---
   useEffect(() => {
     const fetchMeals = async () => {
       try {
@@ -447,7 +494,6 @@ export default function App() {
     setLoginId('');
     setLoginPw('');
     setLoginError('');
-    // 만약 비밀번호 재설정 중 창을 닫으면 취소 처리 (로그인 안 됨)
     if (showPasswordReset) {
       setCurrentUser(null);
       setShowPasswordReset(false);
@@ -495,10 +541,10 @@ export default function App() {
       if (isPasswordCorrect) {
         if (userData.isFirstLogin) {
           setShowPasswordReset(true);
-          setCurrentUser(userData); // 재설정을 위해 임시 할당
+          setCurrentUser(userData);
         } else {
           setCurrentUser(userData);
-          closeLoginModal(); // 정상 로그인 완료 후 모달 닫기
+          closeLoginModal();
         }
       } else {
         setLoginError('학번 또는 비밀번호가 틀렸습니다.');
@@ -565,11 +611,13 @@ export default function App() {
 
 
   // --- [화면 렌더링 (UI)] ---
-  // 이제 currentUser가 없어도 첫 화면(메인 컨텐츠)을 보여줍니다!
 
   const todayDate = new Date();
   const formattedToday = `${todayDate.getFullYear()}년 ${todayDate.getMonth() + 1}월 ${todayDate.getDate()}일 ${['일', '월', '화', '수', '목', '금', '토'][todayDate.getDay()]}요일`;
   const upcomingBirthdays = getUpcomingBirthdays();
+  
+  // 날씨 상태 아이콘 동적 할당
+  const WeatherIcon = weather.icon;
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] text-slate-800 font-sans pb-10">
@@ -579,17 +627,20 @@ export default function App() {
             <div className="bg-emerald-100 p-2 rounded-xl">
               <BookOpen className="text-emerald-600 w-6 h-6" />
             </div>
-            <h1 className="text-xl font-bold">서전고 1-2 맹꽁몽구스 1기 </h1>
+            <h1 className="text-xl font-bold">서전고 1-2 맹꽁몽구스 1기</h1>
           </div>
           <div className="flex items-center space-x-4">
             <div className="hidden md:flex items-center text-sm font-medium text-slate-600 bg-white px-3 py-1.5 rounded-full border shadow-sm">
               <Calendar className="w-4 h-4 mr-2 text-blue-500" /> <span>{formattedToday}</span>
             </div>
+            
+            {/* 날씨 연동 부분 적용 */}
             <div className="hidden sm:flex items-center text-sm text-slate-600 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-100">
-              <Sun className="w-4 h-4 mr-2 text-orange-400" /> <span>진천군 맑음, 22°C</span>
+              <WeatherIcon className={`w-4 h-4 mr-2 ${weather.color}`} /> 
+              <span>{weather.temp !== null ? `진천군 ${weather.description}, ${weather.temp}°C` : '날씨 불러오는 중...'}</span>
             </div>
+            
             <div className="flex items-center space-x-2">
-              {/* 로그인 상태에 따라 버튼 변경 */}
               {!currentUser ? (
                 <button 
                   onClick={() => setIsLoginModalOpen(true)} 
@@ -635,26 +686,25 @@ export default function App() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-4">
             
-            <div className="flex space-x-2 border-b border-slate-200 pb-2 overflow-x-auto" style={{scrollbarWidth: 'none'}}>
-              <button onClick={() => setActiveTab('teacher_notice')} className={`px-4 py-2 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'teacher_notice' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>학급 공지</button>
-              <button onClick={() => setActiveTab('assessment_notice')} className={`px-4 py-2 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'assessment_notice' ? 'bg-pink-50 text-pink-600 border-b-2 border-pink-600' : 'text-slate-400 hover:text-slate-600'}`}>수행평가 공지</button>
-              <button onClick={() => setActiveTab('other_notice')} className={`px-4 py-2 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'other_notice' ? 'bg-orange-50 text-orange-600 border-b-2 border-orange-600' : 'text-slate-400 hover:text-slate-600'}`}>학교 행사 공지</button>
-              <button onClick={() => setActiveTab('gallery')} className={`px-4 py-2 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'gallery' ? 'bg-green-50 text-green-600 border-b-2 border-green-600' : 'text-slate-400 hover:text-slate-600'}`}>사진첩</button>
-              <button onClick={() => setActiveTab('secret')} className={`px-4 py-2 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'secret' ? 'bg-purple-50 text-purple-600 border-b-2 border-purple-600' : 'text-slate-400 hover:text-slate-600'}`}>
-                비밀 쪽지 <Lock className="inline w-3 h-3 ml-1 mb-0.5" />
+            <div className="flex space-x-6 border-b border-slate-200 overflow-x-auto mb-6 px-1" style={{scrollbarWidth: 'none'}}>
+              <button onClick={() => setActiveTab('teacher_notice')} className={`pb-3 font-bold transition whitespace-nowrap relative top-[1px] border-b-2 ${activeTab === 'teacher_notice' ? 'text-blue-600 border-blue-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>학급 공지</button>
+              <button onClick={() => setActiveTab('assessment_notice')} className={`pb-3 font-bold transition whitespace-nowrap relative top-[1px] border-b-2 ${activeTab === 'assessment_notice' ? 'text-pink-600 border-pink-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>수행평가 공지</button>
+              <button onClick={() => setActiveTab('other_notice')} className={`pb-3 font-bold transition whitespace-nowrap relative top-[1px] border-b-2 ${activeTab === 'other_notice' ? 'text-orange-600 border-orange-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>기타 공지</button>
+              <button onClick={() => setActiveTab('gallery')} className={`pb-3 font-bold transition whitespace-nowrap relative top-[1px] border-b-2 ${activeTab === 'gallery' ? 'text-green-600 border-green-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>사진첩</button>
+              <button onClick={() => setActiveTab('secret')} className={`pb-3 font-bold transition whitespace-nowrap flex items-center relative top-[1px] border-b-2 ${activeTab === 'secret' ? 'text-purple-600 border-purple-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>
+                비밀 쪽지 <Lock className="w-3 h-3 ml-1" />
               </button>
             </div>
 
             {isNoticeTab && (
               <>
-                <div className="flex justify-between items-center mb-4">
+                <div className="flex justify-between items-center mb-4 mt-2">
                   <h2 className="text-lg font-bold flex items-center">
                     {activeTab === 'teacher_notice' ? <Bell className="w-5 h-5 mr-2 text-blue-500" /> :
                      activeTab === 'assessment_notice' ? <FileText className="w-5 h-5 mr-2 text-pink-500" /> :
                      <Bell className="w-5 h-5 mr-2 text-orange-500" /> }
-                    {activeTab === 'teacher_notice' ? '선생님 공지사항' : activeTab === 'assessment_notice' ? '수행평가 안내' : '학교행사 공지'}
+                    {activeTab === 'teacher_notice' ? '학급 공지' : activeTab === 'assessment_notice' ? '수행평가 공지' : '기타 공지'}
                   </h2>
-                  {/* 로그인 안 한 유저는 글쓰기 버튼이 보이지 않음 */}
                   {currentUser && canPostInCurrentTab && (
                     <button onClick={openNoticeModal} className="flex items-center text-sm bg-blue-500 text-white px-3 py-1.5 rounded-lg hover:bg-blue-600 transition shadow-sm">
                       <PlusCircle className="w-4 h-4 mr-1" /> 글 쓰기
@@ -667,20 +717,28 @@ export default function App() {
                     <div key={notice.id} onClick={() => setSelectedItem(notice)} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition cursor-pointer flex flex-col justify-between group">
                       <div>
                         <div className="flex justify-between items-start mb-3">
-                          <span className={`text-xs font-bold px-2 py-1 rounded-md ${notice.type === 'pdf' ? 'bg-red-100 text-red-600' : notice.type === 'image' ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-600'}`}>
-                            {notice.type === 'pdf' ? <FileText className="inline w-3 h-3 mr-1"/> : null}
-                            {notice.type === 'image' ? <ImageIcon className="inline w-3 h-3 mr-1"/> : null}
-                            {notice.type.toUpperCase()}
-                          </span>
+                          {notice.type === 'pdf' ? (
+                            <span className="text-[10px] font-bold px-2 py-1 rounded bg-red-50 text-red-500 flex items-center w-fit">
+                              <FileText className="w-3 h-3 mr-1"/>PDF
+                            </span>
+                          ) : notice.type === 'image' ? (
+                            <span className="text-[10px] font-bold px-2 py-1 rounded bg-green-50 text-green-600 flex items-center w-fit">
+                              <ImageIcon className="w-3 h-3 mr-1"/>IMAGE
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold px-2 py-1 rounded bg-slate-100 text-slate-500 flex items-center w-fit">
+                              TEXT
+                            </span>
+                          )}
                         </div>
                         <h3 className="font-bold text-slate-800 mb-2 group-hover:text-blue-600 transition">{notice.title}</h3>
                         <p className="text-sm text-slate-500 line-clamp-2">{notice.content}</p>
                       </div>
-                      <div className="mt-4 text-xs text-slate-400 flex justify-between">
+                      <div className="mt-4 text-xs text-slate-400 flex justify-between items-center">
                          <span>{notice.author}</span>
                          <div className="flex items-center space-x-2">
                            <span className="flex items-center text-blue-400">
-                             <MessageCircle className="w-3 h-3 mr-0.5" /> 
+                             <MessageCircle className="w-3 h-3 mr-1" /> 
                              {comments.filter(c => c.noticeId === notice.id).length}
                            </span>
                            <span>{notice.date}</span>
@@ -787,17 +845,21 @@ export default function App() {
             )}
           </div>
 
-          <div className="space-y-6">
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+          <div className="space-y-6 mt-2">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
               <h2 className="text-lg font-bold flex items-center mb-4"><Clock className="w-5 h-5 mr-2 text-indigo-500" /> 오늘의 시간표</h2>
-              <a href="http://www.xn--s39aj90b0nb2xw6xh.kr/" target="_blank" rel="noopener noreferrer" className="flex flex-col items-center justify-center w-full py-8 bg-indigo-50 border border-indigo-100 rounded-2xl group hover:bg-indigo-100 transition shadow-sm">
-                <div className="bg-white p-3 rounded-full shadow-sm mb-3 group-hover:scale-110 transition"><ExternalLink className="text-indigo-600 w-6 h-6" /></div>
-                <span className="font-bold text-indigo-700">시간표 확인하기</span>
-                <span className="text-xs text-indigo-400 mt-1">(컴시간 알리미로 연결됩니다)</span>
-              </a>
+              <div className="bg-indigo-50/50 p-6 rounded-2xl flex flex-col items-center justify-center border border-indigo-50">
+                <a href="http://www.xn--s39aj90b0nb2xw6xh.kr/" target="_blank" rel="noopener noreferrer" className="flex flex-col items-center justify-center w-full bg-white py-6 rounded-xl hover:shadow-md transition shadow-sm border border-indigo-100/50 group">
+                  <div className="mb-2 group-hover:scale-110 transition bg-indigo-50 p-3 rounded-full text-indigo-600">
+                    <ExternalLink className="w-5 h-5" />
+                  </div>
+                  <span className="font-bold text-indigo-700">시간표 확인하기</span>
+                  <span className="text-xs text-indigo-400 mt-1">(컴시간 알리미로 연결됩니다)</span>
+                </a>
+              </div>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-lg font-bold flex items-center"><Utensils className="w-5 h-5 mr-2 text-orange-500" /> 급식 메뉴</h2>
                 <div className="flex bg-slate-100 rounded-lg p-1">
@@ -807,14 +869,14 @@ export default function App() {
               </div>
 
               {meals.loading ? <div className="text-center text-sm text-slate-500 py-6 animate-pulse">🍽️ 불러오는 중...</div> : meals.error ? <div className="text-center text-sm text-red-500 py-6 font-semibold">{meals.error}</div> : (
-                <div className="space-y-4">
-                  <div className="bg-orange-50 rounded-xl p-4">
-                    <h3 className="text-sm font-bold text-orange-700 mb-2 border-b border-orange-200 pb-1">점심</h3>
-                    <p className="text-sm text-slate-700 leading-relaxed">{meals[mealDayTab].lunch.length > 0 ? meals[mealDayTab].lunch.join(', ') : '급식이 없습니다.'}</p>
+                <div className="space-y-6 mt-2">
+                  <div>
+                    <h3 className="text-sm font-bold text-orange-600 mb-2 border-b border-orange-200 pb-2">점심</h3>
+                    <p className="text-sm text-slate-700 leading-relaxed mt-2">{meals[mealDayTab].lunch.length > 0 ? meals[mealDayTab].lunch.join(', ') : '급식이 없습니다.'}</p>
                   </div>
-                  <div className="bg-blue-50 rounded-xl p-4">
-                    <h3 className="text-sm font-bold text-blue-700 mb-2 border-b border-blue-200 pb-1">저녁</h3>
-                    <p className="text-sm text-slate-700 leading-relaxed">{meals[mealDayTab].dinner.length > 0 ? meals[mealDayTab].dinner.join(', ') : '급식이 없습니다.'}</p>
+                  <div>
+                    <h3 className="text-sm font-bold text-blue-600 mb-2 border-b border-blue-200 pb-2">저녁</h3>
+                    <p className="text-sm text-slate-700 leading-relaxed mt-2">{meals[mealDayTab].dinner.length > 0 ? meals[mealDayTab].dinner.join(', ') : '급식이 없습니다.'}</p>
                   </div>
                 </div>
               )}
@@ -822,45 +884,6 @@ export default function App() {
           </div>
         </div>
       </main>
-
-      {/* --- 로그인 모달 --- */}
-      {isLoginModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-[80]">
-          <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md relative">
-            <button onClick={closeLoginModal} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 p-2 rounded-full transition">
-              <X className="w-5 h-5" />
-            </button>
-
-            {!showPasswordReset ? (
-              <div className="text-center">
-                <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <User className="text-blue-500 w-8 h-8" />
-                </div>
-                <h2 className="text-2xl font-bold text-slate-800 mb-2">로그인</h2>
-                <p className="text-slate-500 mb-6 text-sm">글 작성 및 댓글을 남기려면 로그인해주세요.</p>
-                <form onSubmit={handleLogin} className="space-y-4">
-                  <input type="text" placeholder="학번 (예: 10201) 또는 아이디" className="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-blue-400 bg-slate-50 outline-none" value={loginId} onChange={(e) => setLoginId(e.target.value)} />
-                  <input type="password" placeholder="비밀번호" className="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-blue-400 bg-slate-50 outline-none" value={loginPw} onChange={(e) => setLoginPw(e.target.value)} />
-                  {loginError && <p className="text-red-500 text-sm text-left">{loginError}</p>}
-                  <button type="submit" className="w-full bg-blue-500 text-white font-bold py-3 rounded-xl hover:bg-blue-600 transition shadow-md">로그인하기</button>
-                </form>
-              </div>
-            ) : (
-              <div className="text-center">
-                <div className="bg-orange-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Lock className="text-orange-500 w-8 h-8" />
-                </div>
-                <h2 className="text-xl font-bold text-slate-800 mb-4">비밀번호 재설정</h2>
-                <p className="text-slate-600 mb-6 text-sm">안전을 위해 새로운 비밀번호를 설정해 주세요.</p>
-                <form onSubmit={handlePasswordReset} className="space-y-4">
-                  <input type="password" placeholder="새 비밀번호 입력" className="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-orange-400 outline-none" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required />
-                  <button type="submit" className="w-full bg-slate-800 text-white font-bold py-3 rounded-xl hover:bg-slate-700">변경 및 다시 로그인</button>
-                </form>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* 모달: 선생님 전용 학생 관리 (비밀번호 리셋) */}
       {isStudentManageModalOpen && (
@@ -900,7 +923,7 @@ export default function App() {
         </div>
       )}
 
-      {/* 모달: 공지사항 및 사진 상세보기 (확대, 카테고리 이동, 댓글 기능 포함) */}
+      {/* 모달: 공지사항 및 사진 상세보기 */}
       {selectedItem && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -908,7 +931,7 @@ export default function App() {
               <div className="flex items-center space-x-2">
                 {selectedItem.category && (
                    <span className={`text-xs font-bold px-2 py-1 rounded-md ${selectedItem.category === 'assessment' ? 'bg-pink-100 text-pink-600' : selectedItem.category === 'other' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>
-                     {selectedItem.category === 'assessment' ? '수행평가' : selectedItem.category === 'other' ? '학교행사 공지' : '선생님 공지'}
+                     {selectedItem.category === 'assessment' ? '수행평가 공지' : selectedItem.category === 'other' ? '기타 공지' : '학급 공지'}
                    </span>
                 )}
                 <h3 className="font-bold text-lg">{selectedItem.title}</h3>
@@ -957,7 +980,6 @@ export default function App() {
                           <span className="text-xs text-slate-400">{comment.date}</span>
                         </div>
                         <p className="text-slate-600">{comment.content}</p>
-                        {/* 선생님 또는 댓글 작성자 본인만 삭제 가능 */}
                         {(currentUser?.role === 'teacher' || currentUser?.id === comment.authorId) && (
                           <button 
                             onClick={() => setItemToDelete({ id: comment.id, collectionType: 'comments', title: '이 댓글' })} 
@@ -975,7 +997,6 @@ export default function App() {
                     )}
                   </div>
                   
-                  {/* 로그인 안 된 경우 로그인 유도, 로그인 된 경우 폼 표시 */}
                   {!currentUser ? (
                     <div className="flex space-x-2">
                       <input 
@@ -1017,9 +1038,9 @@ export default function App() {
                     onChange={(e) => handleMoveCategory(e.target.value)}
                   >
                     <option value="" disabled>카테고리 이동</option>
-                    <option value="teacher" disabled={currentUser.role !== 'teacher'}>➡️ 선생님 공지</option>
-                    <option value="assessment" disabled={currentUser.role !== 'teacher' && !currentUser.canPostAssessment}>➡️ 수행평가</option>
-                    <option value="other" disabled={currentUser.role !== 'teacher' && !currentUser.canPostOther}>➡️ 학교행사 공지</option>
+                    <option value="teacher" disabled={currentUser.role !== 'teacher'}>➡️ 학급 공지</option>
+                    <option value="assessment" disabled={currentUser.role !== 'teacher' && !currentUser.canPostAssessment}>➡️ 수행평가 공지</option>
+                    <option value="other" disabled={currentUser.role !== 'teacher' && !currentUser.canPostOther}>➡️ 기타 공지</option>
                   </select>
                 )}
               </div>
@@ -1035,6 +1056,7 @@ export default function App() {
         </div>
       )}
 
+      {/* --- 전체화면 사진 확대 모달 (최상단) --- */}
       {zoomedImageUrl && (
         <div className="fixed inset-0 bg-black/95 z-[70] flex items-center justify-center p-4 cursor-zoom-out" onClick={() => setZoomedImageUrl(null)}>
           <button className="absolute top-4 right-4 text-white p-2 bg-white/10 hover:bg-white/30 rounded-full transition" onClick={() => setZoomedImageUrl(null)}>
@@ -1044,6 +1066,7 @@ export default function App() {
         </div>
       )}
 
+      {/* 모달: 삭제 확인 */}
       {itemToDelete && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
           <div className="bg-white p-6 rounded-3xl w-full max-w-sm text-center shadow-2xl">
@@ -1071,19 +1094,19 @@ export default function App() {
                 {currentUser?.role === 'teacher' && (
                   <label className={`flex-1 text-center py-2.5 rounded-xl cursor-pointer font-bold text-sm transition ${newNoticeCategory === 'teacher' ? 'bg-blue-500 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
                     <input type="radio" name="category" value="teacher" checked={newNoticeCategory === 'teacher'} onChange={(e) => setNewNoticeCategory(e.target.value)} className="hidden" />
-                    선생님 공지
+                    학급 공지
                   </label>
                 )}
                 {(currentUser?.role === 'teacher' || currentUser?.canPostAssessment) && (
                   <label className={`flex-1 text-center py-2.5 rounded-xl cursor-pointer font-bold text-sm transition ${newNoticeCategory === 'assessment' ? 'bg-pink-500 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
                     <input type="radio" name="category" value="assessment" checked={newNoticeCategory === 'assessment'} onChange={(e) => setNewNoticeCategory(e.target.value)} className="hidden" />
-                    수행평가
+                    수행평가 공지
                   </label>
                 )}
                 {(currentUser?.role === 'teacher' || currentUser?.canPostOther) && (
                   <label className={`flex-1 text-center py-2.5 rounded-xl cursor-pointer font-bold text-sm transition ${newNoticeCategory === 'other' ? 'bg-orange-500 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
                     <input type="radio" name="category" value="other" checked={newNoticeCategory === 'other'} onChange={(e) => setNewNoticeCategory(e.target.value)} className="hidden" />
-                    학교행사 공지
+                    기타 공지
                   </label>
                 )}
               </div>
@@ -1160,6 +1183,45 @@ export default function App() {
                 <Send className="w-5 h-5 mr-2" /> 선생님께 보내기
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- 로그인 모달 --- */}
+      {isLoginModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-[80]">
+          <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md relative">
+            <button onClick={closeLoginModal} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 p-2 rounded-full transition">
+              <X className="w-5 h-5" />
+            </button>
+
+            {!showPasswordReset ? (
+              <div className="text-center">
+                <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <User className="text-blue-500 w-8 h-8" />
+                </div>
+                <h2 className="text-2xl font-bold text-slate-800 mb-2">로그인</h2>
+                <p className="text-slate-500 mb-6 text-sm">글 작성 및 댓글을 남기려면 로그인해주세요.</p>
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <input type="text" placeholder="학번 (예: 10201) 또는 아이디" className="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-blue-400 bg-slate-50 outline-none" value={loginId} onChange={(e) => setLoginId(e.target.value)} />
+                  <input type="password" placeholder="비밀번호" className="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-blue-400 bg-slate-50 outline-none" value={loginPw} onChange={(e) => setLoginPw(e.target.value)} />
+                  {loginError && <p className="text-red-500 text-sm text-left">{loginError}</p>}
+                  <button type="submit" className="w-full bg-blue-500 text-white font-bold py-3 rounded-xl hover:bg-blue-600 transition shadow-md">로그인하기</button>
+                </form>
+              </div>
+            ) : (
+              <div className="text-center">
+                <div className="bg-orange-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Lock className="text-orange-500 w-8 h-8" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-800 mb-4">비밀번호 재설정</h2>
+                <p className="text-slate-600 mb-6 text-sm">안전을 위해 새로운 비밀번호를 설정해 주세요.</p>
+                <form onSubmit={handlePasswordReset} className="space-y-4">
+                  <input type="password" placeholder="새 비밀번호 입력" className="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-orange-400 outline-none" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required />
+                  <button type="submit" className="w-full bg-slate-800 text-white font-bold py-3 rounded-xl hover:bg-slate-700">변경 및 다시 로그인</button>
+                </form>
+              </div>
+            )}
           </div>
         </div>
       )}
