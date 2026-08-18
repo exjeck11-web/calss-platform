@@ -149,6 +149,7 @@ export default function App() {
   
   const [newComment, setNewComment] = useState(''); 
 
+  // --- 날씨 API ---
   useEffect(() => {
     const fetchWeather = async () => {
       try {
@@ -186,6 +187,7 @@ export default function App() {
     fetchWeather();
   }, []);
 
+  // --- 급식 API ---
   useEffect(() => {
     const fetchMeals = async () => {
       try {
@@ -226,6 +228,7 @@ export default function App() {
     fetchMeals();
   }, []);
 
+  // --- Firebase 연결 ---
   useEffect(() => {
     const initAuth = async () => {
       try { await signInAnonymously(auth); } 
@@ -615,12 +618,14 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] text-slate-800 font-sans pb-10">
+      {/* 둥글고 얇은 귀여운 '고운돋움' 폰트 적용 */}
       <style>
         {`
-          @import url('https://fonts.googleapis.com/css2?family=Jua&display=swap');
-          .cute-font { font-family: 'Jua', sans-serif; letter-spacing: 0.5px; }
+          @import url('https://fonts.googleapis.com/css2?family=Gowun+Dodum&display=swap');
+          .cute-font { font-family: 'Gowun Dodum', sans-serif; font-weight: 600; letter-spacing: -0.3px; }
         `}
       </style>
+
       <header className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center space-x-3">
@@ -685,10 +690,11 @@ export default function App() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-4">
             
+            {/* 3가지 공지사항 탭 + 2가지 추가 탭이 모두 포함된 부분입니다. */}
             <div className="flex space-x-6 border-b border-slate-200 overflow-x-auto mb-6 px-1" style={{scrollbarWidth: 'none'}}>
               <button onClick={() => setActiveTab('teacher_notice')} className={`pb-3 font-bold transition whitespace-nowrap relative top-[1px] border-b-2 ${activeTab === 'teacher_notice' ? 'text-blue-600 border-blue-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>학급 공지</button>
               <button onClick={() => setActiveTab('assessment_notice')} className={`pb-3 font-bold transition whitespace-nowrap relative top-[1px] border-b-2 ${activeTab === 'assessment_notice' ? 'text-pink-600 border-pink-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>수행평가 공지</button>
-              <button onClick={() => setActiveTab('other_notice')} className={`pb-3 font-bold transition whitespace-nowrap relative top-[1px] border-b-2 ${activeTab === 'other_notice' ? 'text-orange-600 border-orange-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>기타 공지</button>
+              <button onClick={() => setActiveTab('other_notice')} className={`pb-3 font-bold transition whitespace-nowrap relative top-[1px] border-b-2 ${activeTab === 'other_notice' ? 'text-orange-600 border-orange-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>학교 행사 공지</button>
               <button onClick={() => setActiveTab('gallery')} className={`pb-3 font-bold transition whitespace-nowrap relative top-[1px] border-b-2 ${activeTab === 'gallery' ? 'text-green-600 border-green-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>사진첩</button>
               <button onClick={() => setActiveTab('secret')} className={`pb-3 font-bold transition whitespace-nowrap flex items-center relative top-[1px] border-b-2 ${activeTab === 'secret' ? 'text-purple-600 border-purple-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>
                 비밀 쪽지 <Lock className="w-3 h-3 ml-1" />
@@ -702,7 +708,7 @@ export default function App() {
                     {activeTab === 'teacher_notice' ? <Bell className="w-5 h-5 mr-2 text-blue-500" /> :
                      activeTab === 'assessment_notice' ? <FileText className="w-5 h-5 mr-2 text-pink-500" /> :
                      <Bell className="w-5 h-5 mr-2 text-orange-500" /> }
-                    {activeTab === 'teacher_notice' ? '학급 공지' : activeTab === 'assessment_notice' ? '수행평가 공지' : '기타 공지'}
+                    {activeTab === 'teacher_notice' ? '학급 공지' : activeTab === 'assessment_notice' ? '수행평가 공지' : '학교 행사 공지'}
                   </h2>
                   {currentUser && canPostInCurrentTab && (
                     <button onClick={openNoticeModal} className="flex items-center text-sm bg-blue-500 text-white px-3 py-1.5 rounded-lg hover:bg-blue-600 transition shadow-sm">
@@ -737,7 +743,7 @@ export default function App() {
                          <span>{notice.author}</span>
                          <div className="flex items-center space-x-2">
                            <span className="flex items-center text-blue-400">
-                             <MessageCircle className="w-3 h-3 mr-1" /> 
+                             <MessageCircle className="w-3 h-3 mr-0.5" /> 
                              {comments.filter(c => c.noticeId === notice.id).length}
                            </span>
                            <span>{notice.date}</span>
@@ -943,7 +949,7 @@ export default function App() {
               <div className="flex items-center space-x-2">
                 {selectedItem.category && (
                    <span className={`text-xs font-bold px-2 py-1 rounded-md ${selectedItem.category === 'assessment' ? 'bg-pink-100 text-pink-600' : selectedItem.category === 'other' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>
-                     {selectedItem.category === 'assessment' ? '수행평가 공지' : selectedItem.category === 'other' ? '기타 공지' : '학급 공지'}
+                     {selectedItem.category === 'assessment' ? '수행평가 공지' : selectedItem.category === 'other' ? '학교 행사 공지' : '학급 공지'}
                    </span>
                 )}
                 <h3 className="font-bold text-lg">{selectedItem.title}</h3>
@@ -1052,7 +1058,7 @@ export default function App() {
                     <option value="" disabled>카테고리 이동</option>
                     <option value="teacher" disabled={currentUser.role !== 'teacher'}>➡️ 학급 공지</option>
                     <option value="assessment" disabled={currentUser.role !== 'teacher' && !currentUser.canPostAssessment}>➡️ 수행평가 공지</option>
-                    <option value="other" disabled={currentUser.role !== 'teacher' && !currentUser.canPostOther}>➡️ 기타 공지</option>
+                    <option value="other" disabled={currentUser.role !== 'teacher' && !currentUser.canPostOther}>➡️ 학교 행사 공지</option>
                   </select>
                 )}
               </div>
@@ -1118,7 +1124,7 @@ export default function App() {
                 {(currentUser?.role === 'teacher' || currentUser?.canPostOther) && (
                   <label className={`flex-1 text-center py-2.5 rounded-xl cursor-pointer font-bold text-sm transition ${newNoticeCategory === 'other' ? 'bg-orange-500 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
                     <input type="radio" name="category" value="other" checked={newNoticeCategory === 'other'} onChange={(e) => setNewNoticeCategory(e.target.value)} className="hidden" />
-                    기타 공지
+                    학교 행사 공지
                   </label>
                 )}
               </div>
