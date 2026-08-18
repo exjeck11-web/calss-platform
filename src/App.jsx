@@ -129,7 +129,6 @@ export default function App() {
   const [meals, setMeals] = useState({ today: { lunch: [], dinner: [] }, tomorrow: { lunch: [], dinner: [] }, loading: true, error: null });
   const [mealDayTab, setMealDayTab] = useState('today');
 
-  // 날씨 상태 추가
   const [weather, setWeather] = useState({ temp: null, description: '날씨 정보 없음', icon: Sun, color: 'text-orange-400' });
 
   const [isNoticeModalOpen, setIsNoticeModalOpen] = useState(false);
@@ -150,11 +149,9 @@ export default function App() {
   
   const [newComment, setNewComment] = useState(''); 
 
-  // --- 실시간 날씨 API 연동 (진천군) ---
   useEffect(() => {
     const fetchWeather = async () => {
       try {
-        // 진천군 위도(latitude), 경도(longitude)
         const lat = 36.8553;
         const lon = 127.4356;
         const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&timezone=Asia%2FSeoul`;
@@ -170,7 +167,6 @@ export default function App() {
           let WIcon = Sun;
           let color = 'text-orange-400';
 
-          // WMO Weather interpretation codes
           if (code === 0) { desc = '맑음'; WIcon = Sun; color = 'text-orange-400'; }
           else if (code === 1 || code === 2) { desc = '구름 조금'; WIcon = Cloud; color = 'text-slate-400'; }
           else if (code === 3) { desc = '흐림'; WIcon = Cloud; color = 'text-slate-500'; }
@@ -190,7 +186,6 @@ export default function App() {
     fetchWeather();
   }, []);
 
-  // --- 급식 API 연동 ---
   useEffect(() => {
     const fetchMeals = async () => {
       try {
@@ -616,11 +611,16 @@ export default function App() {
   const formattedToday = `${todayDate.getFullYear()}년 ${todayDate.getMonth() + 1}월 ${todayDate.getDate()}일 ${['일', '월', '화', '수', '목', '금', '토'][todayDate.getDay()]}요일`;
   const upcomingBirthdays = getUpcomingBirthdays();
   
-  // 날씨 상태 아이콘 동적 할당
   const WeatherIcon = weather.icon;
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] text-slate-800 font-sans pb-10">
+      <style>
+        {`
+          @import url('https://fonts.googleapis.com/css2?family=Jua&display=swap');
+          .cute-font { font-family: 'Jua', sans-serif; letter-spacing: 0.5px; }
+        `}
+      </style>
       <header className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center space-x-3">
@@ -634,7 +634,6 @@ export default function App() {
               <Calendar className="w-4 h-4 mr-2 text-blue-500" /> <span>{formattedToday}</span>
             </div>
             
-            {/* 날씨 연동 부분 적용 */}
             <div className="hidden sm:flex items-center text-sm text-slate-600 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-100">
               <WeatherIcon className={`w-4 h-4 mr-2 ${weather.color}`} /> 
               <span>{weather.temp !== null ? `진천군 ${weather.description}, ${weather.temp}°C` : '날씨 불러오는 중...'}</span>
@@ -897,6 +896,308 @@ export default function App() {
           </div>
         </div>
       </main>
+
+      {/* 모달: 선생님 전용 학생 관리 (비밀번호 리셋) */}
+      {isStudentManageModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl w-full max-w-xl shadow-2xl p-6 max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-lg flex items-center"><Users className="w-5 h-5 mr-2 text-blue-500" /> 학생 계정 관리</h3>
+              <button onClick={() => setIsStudentManageModalOpen(false)} className="text-slate-500 hover:bg-slate-100 p-1 rounded-full transition"><X className="w-5 h-5"/></button>
+            </div>
+            
+            <div className="overflow-y-auto pr-2 space-y-2 flex-1">
+              {allUsers.map(user => (
+                 <div key={user.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="font-bold text-slate-700 flex items-center">
+                      <span className="w-12 text-slate-400 text-sm">{user.id.slice(3)}번</span>
+                      <span>{user.name}</span>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                       <span className="text-xs text-slate-400 w-24 text-right truncate">PW: {user.password}</span>
+                       <button 
+                          onClick={() => resetStudentPassword(user.id)} 
+                          className="bg-slate-800 text-white text-xs px-3 py-1.5 rounded-lg font-bold hover:bg-slate-700 transition"
+                       >
+                          1234로 초기화
+                       </button>
+                    </div>
+                 </div>
+              ))}
+            </div>
+            
+            {resetMessage && (
+               <div className="mt-4 p-3 bg-green-50 text-green-700 text-sm font-bold rounded-xl text-center">
+                 {resetMessage}
+               </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 모달: 공지사항 및 사진 상세보기 */}
+      {selectedItem && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <div className="flex items-center space-x-2">
+                {selectedItem.category && (
+                   <span className={`text-xs font-bold px-2 py-1 rounded-md ${selectedItem.category === 'assessment' ? 'bg-pink-100 text-pink-600' : selectedItem.category === 'other' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>
+                     {selectedItem.category === 'assessment' ? '수행평가 공지' : selectedItem.category === 'other' ? '기타 공지' : '학급 공지'}
+                   </span>
+                )}
+                <h3 className="font-bold text-lg">{selectedItem.title}</h3>
+              </div>
+              <button onClick={() => setSelectedItem(null)} className="p-1 rounded-full hover:bg-slate-200 transition"><X className="w-6 h-6 text-slate-500" /></button>
+            </div>
+            <div className="p-6 overflow-y-auto">
+              {(selectedItem.type === 'image' || selectedItem.imageUrl) && (
+                <div 
+                  className="w-full mb-4 rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center cursor-pointer relative group border border-slate-200"
+                  onClick={() => setZoomedImageUrl(selectedItem.attachmentUrl || selectedItem.imageUrl)}
+                  title="사진을 클릭하면 확대됩니다"
+                >
+                   {selectedItem.attachmentUrl || selectedItem.imageUrl ? (
+                     <>
+                       <img src={selectedItem.attachmentUrl || selectedItem.imageUrl} alt="첨부 이미지" className="max-w-full h-auto object-contain" style={{ maxHeight: '300px' }} />
+                       <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition duration-300">
+                         <ZoomIn className="text-white w-10 h-10" />
+                       </div>
+                     </>
+                   ) : (
+                     <div className="w-full h-48 border-2 border-dashed border-slate-300 flex items-center justify-center text-slate-400">[이미지 파일이 없습니다]</div>
+                   )}
+                </div>
+              )}
+              {selectedItem.type === 'pdf' && (
+                <div className="w-full p-4 bg-red-50 rounded-xl mb-4 flex items-center justify-between border border-red-100">
+                  <div className="flex items-center text-red-700"><FileText className="w-5 h-5 mr-2" /><span className="text-sm font-semibold truncate max-w-[200px]">{selectedItem.fileName || '첨부파일.pdf'}</span></div>
+                  <button className="text-xs bg-red-100 text-red-700 px-3 py-1 rounded-lg font-bold hover:bg-red-200 transition">다운로드</button>
+                </div>
+              )}
+              {selectedItem.content && <p className="text-slate-700 whitespace-pre-wrap leading-relaxed">{selectedItem.content}</p>}
+              
+              {/* --- 댓글 영역 --- */}
+              {selectedItem.hasOwnProperty('category') && (
+                <div className="mt-8 border-t border-slate-100 pt-5">
+                  <h4 className="font-bold text-sm text-slate-800 mb-4 flex items-center">
+                    <MessageCircle className="w-4 h-4 mr-1 text-slate-500" /> 댓글 {comments.filter(c => c.noticeId === selectedItem.id).length}개
+                  </h4>
+                  
+                  <div className="space-y-3 mb-4 max-h-40 overflow-y-auto pr-2">
+                    {comments.filter(c => c.noticeId === selectedItem.id).map(comment => (
+                      <div key={comment.id} className="bg-slate-50 p-3 rounded-xl text-sm relative group border border-slate-100">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="font-bold text-slate-700">{comment.authorName}</span>
+                          <span className="text-xs text-slate-400">{comment.date}</span>
+                        </div>
+                        <p className="text-slate-600">{comment.content}</p>
+                        {(currentUser?.role === 'teacher' || currentUser?.id === comment.authorId) && (
+                          <button 
+                            onClick={() => setItemToDelete({ id: comment.id, collectionType: 'comments', title: '이 댓글' })} 
+                            className="absolute top-3 right-3 text-xs text-red-400 font-bold opacity-0 group-hover:opacity-100 transition hover:text-red-600 bg-slate-50 px-1"
+                          >
+                            삭제
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {comments.filter(c => c.noticeId === selectedItem.id).length === 0 && (
+                      <div className="text-xs text-slate-400 text-center py-4 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                        아직 댓글이 없습니다. 첫 댓글을 남겨보세요!
+                      </div>
+                    )}
+                  </div>
+                  
+                  {!currentUser ? (
+                    <div className="flex space-x-2">
+                      <input 
+                        type="text" 
+                        readOnly
+                        onClick={() => setIsLoginModalOpen(true)}
+                        placeholder="로그인 후 댓글을 남길 수 있습니다."
+                        className="flex-1 px-4 py-2 border border-slate-200 rounded-xl text-sm bg-slate-50 text-slate-400 cursor-pointer outline-none"
+                      />
+                      <button type="button" onClick={() => setIsLoginModalOpen(true)} className="bg-slate-300 text-white px-5 py-2 rounded-xl text-sm font-bold hover:bg-slate-400 transition shadow-sm">
+                        로그인
+                      </button>
+                    </div>
+                  ) : (
+                    <form onSubmit={submitNewComment} className="flex space-x-2">
+                      <input 
+                        type="text" 
+                        value={newComment} 
+                        onChange={(e) => setNewComment(e.target.value)} 
+                        placeholder="댓글을 입력하세요..."
+                        className="flex-1 px-4 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-400 outline-none bg-white transition shadow-sm"
+                        required
+                      />
+                      <button type="submit" disabled={!newComment.trim()} className="bg-blue-500 text-white px-5 py-2 rounded-xl text-sm font-bold hover:bg-blue-600 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                        등록
+                      </button>
+                    </form>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t flex justify-between items-center">
+              <div className="flex items-center space-x-2">
+                {selectedItem.hasOwnProperty('type') && (currentUser?.role === 'teacher' || currentUser?.id === selectedItem.uploaderId) && (
+                  <select
+                    className="text-xs font-bold border border-slate-300 rounded-xl px-3 py-2 bg-white text-slate-700 outline-none focus:ring-2 focus:ring-blue-400 cursor-pointer shadow-sm transition"
+                    value={selectedItem.category || 'teacher'}
+                    onChange={(e) => handleMoveCategory(e.target.value)}
+                  >
+                    <option value="" disabled>카테고리 이동</option>
+                    <option value="teacher" disabled={currentUser.role !== 'teacher'}>➡️ 학급 공지</option>
+                    <option value="assessment" disabled={currentUser.role !== 'teacher' && !currentUser.canPostAssessment}>➡️ 수행평가 공지</option>
+                    <option value="other" disabled={currentUser.role !== 'teacher' && !currentUser.canPostOther}>➡️ 기타 공지</option>
+                  </select>
+                )}
+              </div>
+
+              <div className="flex space-x-2">
+                {(currentUser?.role === 'teacher' || currentUser?.id === selectedItem.uploaderId) && (
+                  <button onClick={() => setItemToDelete(selectedItem)} className="text-red-500 font-semibold px-4 py-2 rounded-xl hover:bg-red-50 transition">삭제</button>
+                )}
+                <button onClick={() => setSelectedItem(null)} className="bg-slate-800 text-white px-6 py-2 rounded-xl font-semibold hover:bg-slate-700 transition">확인</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- 전체화면 사진 확대 모달 --- */}
+      {zoomedImageUrl && (
+        <div className="fixed inset-0 bg-black/95 z-[70] flex items-center justify-center p-4 cursor-zoom-out" onClick={() => setZoomedImageUrl(null)}>
+          <button className="absolute top-4 right-4 text-white p-2 bg-white/10 hover:bg-white/30 rounded-full transition" onClick={() => setZoomedImageUrl(null)}>
+            <X className="w-8 h-8" />
+          </button>
+          <img src={zoomedImageUrl} alt="확대된 이미지" className="max-w-full max-h-[95vh] object-contain shadow-2xl" />
+        </div>
+      )}
+
+      {/* 모달: 삭제 확인 */}
+      {itemToDelete && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
+          <div className="bg-white p-6 rounded-3xl w-full max-w-sm text-center shadow-2xl">
+            <h3 className="text-lg font-bold text-slate-800 mb-2">{itemToDelete?.title === '이 댓글' ? '댓글 삭제' : '게시물 삭제'}</h3>
+            <p className="text-slate-500 mb-6 text-sm">정말 {itemToDelete?.title === '이 댓글' ? '이 댓글' : '이 게시물'}을 삭제할까요?<br/>삭제 후에는 복구할 수 없습니다.</p>
+            <div className="flex space-x-3">
+              <button onClick={() => setItemToDelete(null)} className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl font-bold hover:bg-slate-200 transition">취소</button>
+              <button onClick={executeDelete} className="flex-1 bg-red-500 text-white py-3 rounded-xl font-bold hover:bg-red-600 transition shadow-md">삭제하기</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 모달: 알림장 새 공지 작성 */}
+      {isNoticeModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-lg flex items-center"><PlusCircle className="w-5 h-5 mr-2 text-blue-500" /> 새 공지사항 작성</h3>
+              <button onClick={closeModal} className="text-slate-500 hover:bg-slate-100 p-1 rounded-full transition"><X className="w-5 h-5"/></button>
+            </div>
+            <form onSubmit={submitNewNotice} className="space-y-4">
+              
+              <div className="flex space-x-2">
+                {currentUser?.role === 'teacher' && (
+                  <label className={`flex-1 text-center py-2.5 rounded-xl cursor-pointer font-bold text-sm transition ${newNoticeCategory === 'teacher' ? 'bg-blue-500 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                    <input type="radio" name="category" value="teacher" checked={newNoticeCategory === 'teacher'} onChange={(e) => setNewNoticeCategory(e.target.value)} className="hidden" />
+                    학급 공지
+                  </label>
+                )}
+                {(currentUser?.role === 'teacher' || currentUser?.canPostAssessment) && (
+                  <label className={`flex-1 text-center py-2.5 rounded-xl cursor-pointer font-bold text-sm transition ${newNoticeCategory === 'assessment' ? 'bg-pink-500 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                    <input type="radio" name="category" value="assessment" checked={newNoticeCategory === 'assessment'} onChange={(e) => setNewNoticeCategory(e.target.value)} className="hidden" />
+                    수행평가 공지
+                  </label>
+                )}
+                {(currentUser?.role === 'teacher' || currentUser?.canPostOther) && (
+                  <label className={`flex-1 text-center py-2.5 rounded-xl cursor-pointer font-bold text-sm transition ${newNoticeCategory === 'other' ? 'bg-orange-500 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                    <input type="radio" name="category" value="other" checked={newNoticeCategory === 'other'} onChange={(e) => setNewNoticeCategory(e.target.value)} className="hidden" />
+                    기타 공지
+                  </label>
+                )}
+              </div>
+
+              <input type="text" placeholder="공지 제목" className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-400 focus:outline-none bg-slate-50" value={newTitle} onChange={e => setNewTitle(e.target.value)} required />
+              <label className="block w-full cursor-pointer">
+                <div className="w-full px-4 py-3 border border-dashed border-slate-300 rounded-xl bg-slate-50 hover:bg-slate-100 transition flex flex-col items-center justify-center space-y-2">
+                  <Upload className="w-6 h-6 text-slate-400" />
+                  <span className="text-sm text-slate-500">{isCompressing ? '사진 용량 줄이는 중...' : '사진 또는 PDF 첨부 (선택)'}</span>
+                  <input type="file" className="hidden" accept="image/*, application/pdf" onChange={handleFileChange} disabled={isCompressing} />
+                </div>
+              </label>
+              {filePreviewUrl && (
+                <div className="mt-2 relative inline-block">
+                  <img src={filePreviewUrl} alt="미리보기" className="h-24 rounded-lg object-cover border" />
+                  <button type="button" onClick={() => { setSelectedFile(null); setFilePreviewUrl(null); setFileType('text'); }} className="absolute -top-2 -right-2 bg-white rounded-full shadow-md p-1"><X className="w-3 h-3 text-red-500" /></button>
+                </div>
+              )}
+              <textarea placeholder="내용을 적어주세요." className="w-full px-4 py-3 border rounded-xl h-32 resize-none focus:ring-2 focus:ring-blue-400 focus:outline-none bg-slate-50" value={newContent} onChange={e => setNewContent(e.target.value)} required />
+              {submitError && <div className="p-3 bg-red-50 text-red-600 text-sm rounded-xl border border-red-100">⚠️ {submitError}</div>}
+              <button type="submit" disabled={isCompressing} className={`w-full text-white font-bold py-3 rounded-xl transition shadow-md ${isCompressing ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'}`}>알림장에 등록하기</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 모달: 사진첩 업로드 */}
+      {isPhotoModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-lg flex items-center"><Camera className="w-5 h-5 mr-2 text-green-500" /> 사진 올리기</h3>
+              <button onClick={closeModal} className="text-slate-500 hover:bg-slate-100 p-1 rounded-full"><X className="w-5 h-5"/></button>
+            </div>
+            <form onSubmit={submitNewPhoto} className="space-y-4">
+              <input type="text" placeholder="사진 제목을 적어주세요" className="w-full px-4 py-3 border rounded-xl bg-slate-50" value={newTitle} onChange={e => setNewTitle(e.target.value)} required />
+              <label className="block w-full cursor-pointer">
+                <div className="w-full px-4 py-10 border-2 border-dashed border-green-300 rounded-xl bg-green-50 hover:bg-green-100 flex flex-col items-center justify-center">
+                  <Camera className="w-10 h-10 text-green-400 mb-2" />
+                  <span className="text-sm font-bold text-green-700">{isCompressing ? '사진 최적화 중...' : '여기를 눌러 사진 선택'}</span>
+                  <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} required disabled={isCompressing} />
+                </div>
+              </label>
+              {filePreviewUrl && <div className="w-full rounded-xl overflow-hidden bg-slate-100 flex justify-center"><img src={filePreviewUrl} alt="미리보기" className="max-h-48 object-contain" /></div>}
+              {submitError && <div className="p-3 bg-red-50 text-red-600 text-sm rounded-xl border border-red-100">⚠️ {submitError}</div>}
+              <button type="submit" disabled={isCompressing || !filePreviewUrl} className={`w-full text-white font-bold py-3 rounded-xl transition shadow-md ${(isCompressing || !filePreviewUrl) ? 'bg-slate-400 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'}`}>사진첩에 올리기</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 모달: 비밀 쪽지 작성 */}
+      {isSecretModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-lg flex items-center"><Lock className="w-5 h-5 mr-2 text-purple-500" /> 선생님께 비밀 쪽지 쓰기</h3>
+              <button onClick={closeModal} className="text-slate-500 hover:bg-slate-100 p-1 rounded-full transition"><X className="w-5 h-5"/></button>
+            </div>
+            <form onSubmit={submitNewSecretMessage} className="space-y-4">
+              <div className="bg-purple-50 p-3 rounded-xl mb-4 text-xs text-purple-700 flex items-center">
+                <ShieldCheck className="w-4 h-4 mr-1 flex-shrink-0" />
+                이 쪽지는 담임선생님만 읽을 수 있어요. 안심하고 편하게 적어주세요!
+              </div>
+              <textarea 
+                placeholder="선생님께 하고 싶은 말을 자유롭게 적어주세요..." 
+                className="w-full px-4 py-3 border rounded-xl h-40 resize-none focus:ring-2 focus:ring-purple-400 focus:outline-none bg-slate-50" 
+                value={newContent} 
+                onChange={e => setNewContent(e.target.value)} 
+                required 
+              />
+              {submitError && <div className="p-3 bg-red-50 text-red-600 text-sm rounded-xl border border-red-100">⚠️ {submitError}</div>}
+              <button type="submit" className="w-full bg-purple-500 text-white font-bold py-3 rounded-xl hover:bg-purple-600 transition shadow-md flex items-center justify-center">
+                <Send className="w-5 h-5 mr-2" /> 선생님께 보내기
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* --- 로그인 모달 --- */}
       {isLoginModalOpen && (
