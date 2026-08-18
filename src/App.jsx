@@ -1074,7 +1074,7 @@ export default function App() {
         </div>
       )}
 
-      {/* --- 전체화면 사진 확대 모달 --- */}
+      {/* --- 전체화면 사진 확대 모달 (최상단) --- */}
       {zoomedImageUrl && (
         <div className="fixed inset-0 bg-black/95 z-[70] flex items-center justify-center p-4 cursor-zoom-out" onClick={() => setZoomedImageUrl(null)}>
           <button className="absolute top-4 right-4 text-white p-2 bg-white/10 hover:bg-white/30 rounded-full transition" onClick={() => setZoomedImageUrl(null)}>
