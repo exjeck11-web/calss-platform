@@ -595,8 +595,6 @@ export default function App() {
   };
 
   const isNoticeTab = activeTab.endsWith('_notice');
-  
-  // --- 공지사항 탭 필터링 완벽 수정! ---
   const filteredNotices = notices.filter(notice => {
     if (activeTab === 'teacher_notice') return notice.category === 'teacher' || !notice.category;
     if (activeTab === 'assessment_notice') return notice.category === 'assessment';
