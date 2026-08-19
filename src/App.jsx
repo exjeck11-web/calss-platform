@@ -4,6 +4,7 @@ import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, onSnapshot, addDoc, serverTimestamp, doc, getDoc, getDocs, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { 
   Calendar, 
+  Utensils, 
   Sun, 
   Cloud,
   CloudRain,
@@ -617,7 +618,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] text-slate-800 font-sans pb-10">
-      {/* 둥글고 얇은 귀여운 '고운돋움' 폰트 적용 (급식 메뉴는 제외됨) */}
       <style>
         {`
           @import url('https://fonts.googleapis.com/css2?family=Gowun+Dodum&display=swap');
@@ -689,7 +689,6 @@ export default function App() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-4">
             
-            {/* 3가지 공지사항 탭 + 2가지 추가 탭이 모두 포함된 부분입니다. */}
             <div className="flex space-x-6 border-b border-slate-200 overflow-x-auto mb-6 px-1" style={{scrollbarWidth: 'none'}}>
               <button onClick={() => setActiveTab('teacher_notice')} className={`pb-3 font-bold transition whitespace-nowrap relative top-[1px] border-b-2 ${activeTab === 'teacher_notice' ? 'text-blue-600 border-blue-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>학급 공지</button>
               <button onClick={() => setActiveTab('assessment_notice')} className={`pb-3 font-bold transition whitespace-nowrap relative top-[1px] border-b-2 ${activeTab === 'assessment_notice' ? 'text-pink-600 border-pink-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>수행평가 공지</button>
@@ -736,13 +735,21 @@ export default function App() {
                           )}
                         </div>
                         <h3 className="font-bold text-slate-800 mb-2 group-hover:text-blue-600 transition">{notice.title}</h3>
+                        
+                        {/* 이미지 미리보기 썸네일 추가! */}
+                        {(notice.type === 'image' && notice.attachmentUrl) && (
+                          <div className="mb-3 w-full h-40 rounded-xl overflow-hidden bg-slate-50 border border-slate-100">
+                            <img src={notice.attachmentUrl} alt="미리보기" className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                          </div>
+                        )}
+
                         <p className="text-sm text-slate-500 line-clamp-2">{notice.content}</p>
                       </div>
                       <div className="mt-4 text-xs text-slate-400 flex justify-between items-center">
                          <span>{notice.author}</span>
                          <div className="flex items-center space-x-2">
                            <span className="flex items-center text-blue-400">
-                             <MessageCircle className="w-3 h-3 mr-0.5" /> 
+                             <MessageCircle className="w-3 h-3 mr-1" /> 
                              {comments.filter(c => c.noticeId === notice.id).length}
                            </span>
                            <span>{notice.date}</span>
@@ -863,36 +870,35 @@ export default function App() {
               </div>
             </div>
 
-            {/* 깔끔하게 다듬어진 오늘의 급식 위젯 */}
             <div className="bg-white rounded-3xl shadow-sm border-2 border-orange-100 p-6 relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-orange-50 rounded-bl-full -z-10 opacity-50"></div>
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-lg font-bold flex items-center text-orange-600">
-                  <span className="text-xl mr-2">🍱</span> 오늘의 급식
+                <h2 className="text-xl font-bold flex items-center cute-font text-orange-600">
+                  <span className="text-2xl mr-2">🍱</span> 오늘의 급식
                 </h2>
                 <div className="flex bg-orange-100/50 rounded-full p-1 shadow-inner">
-                  <button onClick={() => setMealDayTab('today')} className={`px-3 py-1 text-sm font-semibold rounded-full transition-all duration-300 ${mealDayTab === 'today' ? 'bg-white shadow-sm text-orange-600 scale-105' : 'text-orange-400 hover:bg-white/50'}`}>오늘</button>
-                  <button onClick={() => setMealDayTab('tomorrow')} className={`px-3 py-1 text-sm font-semibold rounded-full transition-all duration-300 ${mealDayTab === 'tomorrow' ? 'bg-white shadow-sm text-orange-600 scale-105' : 'text-orange-400 hover:bg-white/50'}`}>내일</button>
+                  <button onClick={() => setMealDayTab('today')} className={`px-4 py-1.5 text-sm cute-font rounded-full transition-all duration-300 ${mealDayTab === 'today' ? 'bg-white shadow-sm text-orange-600 scale-105' : 'text-orange-400 hover:bg-white/50'}`}>오늘</button>
+                  <button onClick={() => setMealDayTab('tomorrow')} className={`px-4 py-1.5 text-sm cute-font rounded-full transition-all duration-300 ${mealDayTab === 'tomorrow' ? 'bg-white shadow-sm text-orange-600 scale-105' : 'text-orange-400 hover:bg-white/50'}`}>내일</button>
                 </div>
               </div>
 
-              {meals.loading ? <div className="text-center text-slate-500 py-8 animate-pulse text-sm font-medium">🍽️ 맛있는 급식을 불러오고 있어요...</div> : meals.error ? <div className="text-center text-red-500 py-8 text-sm font-medium">{meals.error}</div> : (
+              {meals.loading ? <div className="text-center cute-font text-slate-500 py-8 animate-pulse text-lg">🍽️ 맛있는 급식을 불러오고 있어요...</div> : meals.error ? <div className="text-center cute-font text-red-500 py-8 text-lg">{meals.error}</div> : (
                 <div className="space-y-4 relative z-10">
-                  <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-2xl p-4 border border-orange-100 shadow-sm relative transition-transform hover:-translate-y-1">
-                    <div className="absolute -top-3 -right-2 text-2xl opacity-40">☀️</div>
-                    <h3 className="text-sm font-bold text-orange-600 mb-2 flex items-center">
-                      <span className="bg-orange-200 text-orange-800 px-2 py-0.5 rounded-md mr-2 shadow-sm text-xs">점심</span>
+                  <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-2xl p-5 border border-orange-100 shadow-sm relative transition-transform hover:-translate-y-1">
+                    <div className="absolute -top-3 -right-2 text-3xl opacity-40">☀️</div>
+                    <h3 className="text-lg cute-font text-orange-600 mb-2 flex items-center">
+                      <span className="bg-orange-200 text-orange-700 px-3 py-1 rounded-full mr-2 shadow-sm text-sm">점심</span>
                     </h3>
-                    <p className="text-sm text-slate-700 leading-relaxed break-keep">
+                    <p className="cute-font text-slate-700 leading-relaxed text-[1.1rem] break-keep">
                       {meals[mealDayTab].lunch.length > 0 ? meals[mealDayTab].lunch.join(', ') : '오늘은 점심 급식이 없나봐요! 😢'}
                     </p>
                   </div>
-                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-4 border border-blue-100 shadow-sm relative transition-transform hover:-translate-y-1">
-                    <div className="absolute -top-3 -right-2 text-2xl opacity-40">🌙</div>
-                    <h3 className="text-sm font-bold text-blue-600 mb-2 flex items-center">
-                      <span className="bg-blue-200 text-blue-800 px-2 py-0.5 rounded-md mr-2 shadow-sm text-xs">저녁</span>
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-5 border border-blue-100 shadow-sm relative transition-transform hover:-translate-y-1">
+                    <div className="absolute -top-3 -right-2 text-3xl opacity-40">🌙</div>
+                    <h3 className="text-lg cute-font text-blue-600 mb-2 flex items-center">
+                      <span className="bg-blue-200 text-blue-700 px-3 py-1 rounded-full mr-2 shadow-sm text-sm">저녁</span>
                     </h3>
-                    <p className="text-sm text-slate-700 leading-relaxed break-keep">
+                    <p className="cute-font text-slate-700 leading-relaxed text-[1.1rem] break-keep">
                       {meals[mealDayTab].dinner.length > 0 ? meals[mealDayTab].dinner.join(', ') : '오늘은 저녁 급식이 없나봐요! 🏠'}
                     </p>
                   </div>
@@ -1124,7 +1130,7 @@ export default function App() {
                 {(currentUser?.role === 'teacher' || currentUser?.canPostOther) && (
                   <label className={`flex-1 text-center py-2.5 rounded-xl cursor-pointer font-bold text-sm transition ${newNoticeCategory === 'other' ? 'bg-orange-500 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
                     <input type="radio" name="category" value="other" checked={newNoticeCategory === 'other'} onChange={(e) => setNewNoticeCategory(e.target.value)} className="hidden" />
-                    학교 행사 공지
+                    기타 공지
                   </label>
                 )}
               </div>
