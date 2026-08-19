@@ -868,3 +868,84 @@ export default function App() {
               <div className="absolute top-0 right-0 w-32 h-32 bg-orange-50 rounded-bl-full -z-10 opacity-50"></div>
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold flex items-center cute-font text-orange-600">
+                  <span className="text-2xl mr-2">🍱</span> 냠냠 급식
+                </h2>
+                <div className="flex bg-orange-100/50 rounded-full p-1 shadow-inner">
+                  <button onClick={() => setMealDayTab('today')} className={`px-4 py-1.5 text-sm cute-font rounded-full transition-all duration-300 ${mealDayTab === 'today' ? 'bg-white shadow-sm text-orange-600 scale-105' : 'text-orange-400 hover:bg-white/50'}`}>오늘</button>
+                  <button onClick={() => setMealDayTab('tomorrow')} className={`px-4 py-1.5 text-sm cute-font rounded-full transition-all duration-300 ${mealDayTab === 'tomorrow' ? 'bg-white shadow-sm text-orange-600 scale-105' : 'text-orange-400 hover:bg-white/50'}`}>내일</button>
+                </div>
+              </div>
+
+              {meals.loading ? <div className="text-center cute-font text-slate-500 py-8 animate-pulse text-lg">🍽️ 맛있는 급식을 불러오고 있어요...</div> : meals.error ? <div className="text-center cute-font text-red-500 py-8 text-lg">{meals.error}</div> : (
+                <div className="space-y-4 relative z-10">
+                  <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-2xl p-5 border border-orange-100 shadow-sm relative transition-transform hover:-translate-y-1">
+                    <div className="absolute -top-3 -right-2 text-3xl opacity-40">☀️</div>
+                    <h3 className="text-lg cute-font text-orange-600 mb-2 flex items-center">
+                      <span className="bg-orange-200 text-orange-700 px-3 py-1 rounded-full mr-2 shadow-sm text-sm">점심</span>
+                    </h3>
+                    <p className="cute-font text-slate-700 leading-relaxed text-[1.1rem] break-keep">
+                      {meals[mealDayTab].lunch.length > 0 ? meals[mealDayTab].lunch.join(', ') : '오늘은 점심 급식이 없나봐요! 😢'}
+                    </p>
+                  </div>
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-5 border border-blue-100 shadow-sm relative transition-transform hover:-translate-y-1">
+                    <div className="absolute -top-3 -right-2 text-3xl opacity-40">🌙</div>
+                    <h3 className="text-lg cute-font text-blue-600 mb-2 flex items-center">
+                      <span className="bg-blue-200 text-blue-700 px-3 py-1 rounded-full mr-2 shadow-sm text-sm">저녁</span>
+                    </h3>
+                    <p className="cute-font text-slate-700 leading-relaxed text-[1.1rem] break-keep">
+                      {meals[mealDayTab].dinner.length > 0 ? meals[mealDayTab].dinner.join(', ') : '오늘은 저녁 급식이 없나봐요! 🏠'}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </main>
+
+      {/* 모달: 선생님 전용 학생 관리 (비밀번호 리셋) */}
+      {isStudentManageModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl w-full max-w-xl shadow-2xl p-6 max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-lg flex items-center"><Users className="w-5 h-5 mr-2 text-blue-500" /> 학생 계정 관리</h3>
+              <button onClick={() => setIsStudentManageModalOpen(false)} className="text-slate-500 hover:bg-slate-100 p-1 rounded-full transition"><X className="w-5 h-5"/></button>
+            </div>
+            
+            <div className="overflow-y-auto pr-2 space-y-2 flex-1">
+              {allUsers.map(user => (
+                 <div key={user.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="font-bold text-slate-700 flex items-center">
+                      <span className="w-12 text-slate-400 text-sm">{user.id.slice(3)}번</span>
+                      <span>{user.name}</span>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                       <span className="text-xs text-slate-400 w-24 text-right truncate">PW: {user.password}</span>
+                       <button 
+                          onClick={() => resetStudentPassword(user.id)} 
+                          className="bg-slate-800 text-white text-xs px-3 py-1.5 rounded-lg font-bold hover:bg-slate-700 transition"
+                       >
+                          1234로 초기화
+                       </button>
+                    </div>
+                 </div>
+              ))}
+            </div>
+            
+            {resetMessage && (
+               <div className="mt-4 p-3 bg-green-50 text-green-700 text-sm font-bold rounded-xl text-center">
+                 {resetMessage}
+               </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 모달: 공지사항 및 사진 상세보기 */}
+      {selectedItem && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <div className="flex items-center space-x-2">
+                {selectedItem.category && (
+                   <span className={`text-xs font-bold px-2 py-1 rounded-md ${selectedItem.category === 'assessment' ? 'bg-pink-100 text-pink-600' : selectedItem.category === 'other' ? 'bg-orange
