@@ -4,7 +4,6 @@ import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, onSnapshot, addDoc, serverTimestamp, doc, getDoc, getDocs, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { 
   Calendar, 
-  Utensils, 
   Sun, 
   Cloud,
   CloudRain,
@@ -1130,7 +1129,7 @@ export default function App() {
                 {(currentUser?.role === 'teacher' || currentUser?.canPostOther) && (
                   <label className={`flex-1 text-center py-2.5 rounded-xl cursor-pointer font-bold text-sm transition ${newNoticeCategory === 'other' ? 'bg-orange-500 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
                     <input type="radio" name="category" value="other" checked={newNoticeCategory === 'other'} onChange={(e) => setNewNoticeCategory(e.target.value)} className="hidden" />
-                    기타 공지
+                    학교 행사 공지
                   </label>
                 )}
               </div>
