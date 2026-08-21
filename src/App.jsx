@@ -140,8 +140,8 @@ export default function App() {
   const [newTitle, setNewTitle] = useState('');
   const [newContent, setNewContent] = useState('');
   const [newNoticeCategory, setNewNoticeCategory] = useState('teacher');
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [filePreviewUrl, setFilePreviewUrl] = useState(null);
+  const [selectedFiles, setSelectedFiles] = useState([]); // 다중 파일 배열로 변경
+  const [filePreviewUrls, setFilePreviewUrls] = useState([]); // 다중 URL 배열로 변경
   const [fileType, setFileType] = useState('text');
   const [isCompressing, setIsCompressing] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -345,26 +345,36 @@ export default function App() {
   };
 
   const handleFileChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
 
-    if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
+    const isAnyImage = files.some(file => file.type.startsWith('image/'));
+    const isPdf = files[0].type === 'application/pdf';
+
+    if (!isAnyImage && !isPdf) {
       setSubmitError('이미지 또는 PDF 파일만 업로드 가능합니다.');
       return;
     }
 
-    setSelectedFile(file);
+    setSelectedFiles(files);
     setSubmitError('');
 
-    if (file.type.startsWith('image/')) {
+    if (isAnyImage) {
       setFileType('image');
       setIsCompressing(true);
-      const compressedBase64 = await compressImage(file);
-      setFilePreviewUrl(compressedBase64);
-      setIsCompressing(false);
+      try {
+        const compressedUrls = await Promise.all(
+           files.filter(f => f.type.startsWith('image/')).map(f => compressImage(f))
+        );
+        setFilePreviewUrls(compressedUrls);
+      } catch (error) {
+        setSubmitError('이미지 압축 중 오류가 발생했습니다.');
+      } finally {
+        setIsCompressing(false);
+      }
     } else {
       setFileType('pdf');
-      setFilePreviewUrl(file.name); 
+      setFilePreviewUrls([files[0].name]); 
     }
   };
 
@@ -380,8 +390,8 @@ export default function App() {
         category: newNoticeCategory,
         date: new Date().toISOString().split('T')[0], 
         createdAt: serverTimestamp(),
-        attachmentUrl: filePreviewUrl || null,
-        fileName: selectedFile ? selectedFile.name : null,
+        attachmentUrls: filePreviewUrls.length > 0 ? filePreviewUrls : null, // 여러장 배열로 저장
+        fileName: selectedFiles.length > 0 ? selectedFiles[0].name : null,
         author: currentUser.name,
         uploaderId: currentUser.id
       });
@@ -393,12 +403,12 @@ export default function App() {
     e.preventDefault(); 
     setSubmitError('');
     if (!firebaseUser) return setSubmitError('DB 연결 중입니다.');
-    if (!filePreviewUrl || isCompressing) return;
+    if (filePreviewUrls.length === 0 || isCompressing) return;
 
     try {
       await addDoc(collection(db, 'gallery'), {
         title: newTitle || '무제',
-        imageUrl: filePreviewUrl,
+        imageUrls: filePreviewUrls, // 여러장 배열로 저장
         date: new Date().toISOString().split('T')[0], 
         createdAt: serverTimestamp(),
         uploaderName: currentUser.name,
@@ -478,8 +488,8 @@ export default function App() {
     setNewTitle(''); 
     setNewContent(''); 
     setNewNoticeCategory('teacher'); 
-    setSelectedFile(null);
-    setFilePreviewUrl(null); 
+    setSelectedFiles([]);
+    setFilePreviewUrls([]); 
     setFileType('text'); 
     setIsCompressing(false);
     setSubmitError('');
@@ -728,10 +738,15 @@ export default function App() {
                         </div>
                         <h3 className="font-bold text-slate-800 mb-2 group-hover:text-blue-600 transition">{notice.title}</h3>
                         
-                        {/* 이미지 미리보기 썸네일 추가! */}
-                        {(notice.type === 'image' && notice.attachmentUrl) && (
-                          <div className="mb-3 w-full h-40 rounded-xl overflow-hidden bg-slate-50 border border-slate-100">
-                            <img src={notice.attachmentUrl} alt="미리보기" className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                        {/* 이미지 미리보기 썸네일 (잘리지 않게 object-contain 적용, 여러 장 표시) */}
+                        {(notice.type === 'image' && (notice.attachmentUrls || notice.attachmentUrl)) && (
+                          <div className="mb-3 w-full rounded-xl overflow-hidden bg-slate-50 border border-slate-100 flex items-center justify-center relative py-2">
+                            <img src={notice.attachmentUrls ? notice.attachmentUrls[0] : notice.attachmentUrl} alt="미리보기" className="w-full h-auto max-h-48 object-contain group-hover:scale-105 transition duration-300" />
+                            {notice.attachmentUrls && notice.attachmentUrls.length > 1 && (
+                               <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-full flex items-center shadow-md">
+                                 <ImageIcon className="w-3 h-3 mr-1"/> +{notice.attachmentUrls.length - 1}
+                               </div>
+                            )}
                           </div>
                         )}
 
@@ -767,8 +782,14 @@ export default function App() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                   {photos.map((photo) => (
                     <div key={photo.id} onClick={() => setSelectedItem(photo)} className="bg-white rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition cursor-pointer overflow-hidden group">
-                      <div className="aspect-square bg-slate-100 overflow-hidden relative">
-                        <img src={photo.imageUrl} alt={photo.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                      {/* 사진첩 썸네일 잘리지 않게 object-contain 적용 */}
+                      <div className="aspect-square bg-slate-50 flex items-center justify-center relative overflow-hidden">
+                        <img src={photo.imageUrls ? photo.imageUrls[0] : photo.imageUrl} alt={photo.title} className="w-full h-full object-contain p-2 group-hover:scale-105 transition duration-300" />
+                        {photo.imageUrls && photo.imageUrls.length > 1 && (
+                           <div className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded-full font-bold shadow-sm">
+                             +{photo.imageUrls.length - 1}
+                           </div>
+                        )}
                       </div>
                       <div className="p-3">
                         <h3 className="font-bold text-slate-800 text-sm truncate">{photo.title}</h3>
@@ -948,22 +969,24 @@ export default function App() {
               <button onClick={() => setSelectedItem(null)} className="p-1 rounded-full hover:bg-slate-200 transition"><X className="w-6 h-6 text-slate-500" /></button>
             </div>
             <div className="p-6 overflow-y-auto">
-              {(selectedItem.type === 'image' || selectedItem.imageUrl) && (
-                <div 
-                  className="w-full mb-4 rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center cursor-pointer relative group border border-slate-200"
-                  onClick={() => setZoomedImageUrl(selectedItem.attachmentUrl || selectedItem.imageUrl)}
-                  title="사진을 클릭하면 확대됩니다"
-                >
-                   {selectedItem.attachmentUrl || selectedItem.imageUrl ? (
-                     <>
-                       <img src={selectedItem.attachmentUrl || selectedItem.imageUrl} alt="첨부 이미지" className="max-w-full h-auto object-contain" style={{ maxHeight: '300px' }} />
-                       <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition duration-300">
-                         <ZoomIn className="text-white w-10 h-10" />
-                       </div>
-                     </>
-                   ) : (
-                     <div className="w-full h-48 border-2 border-dashed border-slate-300 flex items-center justify-center text-slate-400">[이미지 파일이 없습니다]</div>
-                   )}
+              {/* 게시물 여러 장 이미지 표시 (세로로 나열) */}
+              {(selectedItem.type === 'image' || selectedItem.imageUrl || selectedItem.imageUrls) && (
+                <div className="space-y-3 mb-4">
+                  {(selectedItem.attachmentUrls || selectedItem.imageUrls || [selectedItem.attachmentUrl || selectedItem.imageUrl]).map((url, idx) => (
+                    url && (
+                      <div 
+                        key={idx}
+                        className="w-full rounded-xl overflow-hidden bg-slate-50 flex items-center justify-center cursor-pointer relative group border border-slate-200 py-4"
+                        onClick={() => setZoomedImageUrl(url)}
+                        title="사진을 클릭하면 확대됩니다"
+                      >
+                         <img src={url} alt={`첨부 이미지 ${idx + 1}`} className="max-w-full h-auto object-contain" style={{ maxHeight: '350px' }} />
+                         <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition duration-300">
+                           <ZoomIn className="text-white w-10 h-10" />
+                         </div>
+                      </div>
+                    )
+                  ))}
                 </div>
               )}
               {selectedItem.type === 'pdf' && (
@@ -1121,19 +1144,40 @@ export default function App() {
               </div>
 
               <input type="text" placeholder="공지 제목" className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-400 focus:outline-none bg-slate-50" value={newTitle} onChange={e => setNewTitle(e.target.value)} required />
+              
               <label className="block w-full cursor-pointer">
                 <div className="w-full px-4 py-3 border border-dashed border-slate-300 rounded-xl bg-slate-50 hover:bg-slate-100 transition flex flex-col items-center justify-center space-y-2">
                   <Upload className="w-6 h-6 text-slate-400" />
-                  <span className="text-sm text-slate-500">{isCompressing ? '사진 용량 줄이는 중...' : '사진 또는 PDF 첨부 (선택)'}</span>
-                  <input type="file" className="hidden" accept="image/*, application/pdf" onChange={handleFileChange} disabled={isCompressing} />
+                  <span className="text-sm text-slate-500">{isCompressing ? '사진 용량 줄이는 중...' : '사진 여러 장 또는 PDF 첨부 (선택)'}</span>
+                  {/* multiple 속성 추가로 여러장 선택 가능하게 설정 */}
+                  <input type="file" multiple className="hidden" accept="image/*, application/pdf" onChange={handleFileChange} disabled={isCompressing} />
                 </div>
               </label>
-              {filePreviewUrl && (
-                <div className="mt-2 relative inline-block">
-                  <img src={filePreviewUrl} alt="미리보기" className="h-24 rounded-lg object-cover border" />
-                  <button type="button" onClick={() => { setSelectedFile(null); setFilePreviewUrl(null); setFileType('text'); }} className="absolute -top-2 -right-2 bg-white rounded-full shadow-md p-1"><X className="w-3 h-3 text-red-500" /></button>
+              
+              {/* 업로드 대기중인 파일/사진들 미리보기 */}
+              {filePreviewUrls.length > 0 && fileType === 'image' && (
+                <div className="mt-2 flex space-x-2 overflow-x-auto pb-2" style={{scrollbarWidth: 'none'}}>
+                  {filePreviewUrls.map((url, idx) => (
+                    <div key={idx} className="relative inline-block flex-shrink-0">
+                      <img src={url} alt={`미리보기 ${idx+1}`} className="h-20 w-auto rounded-lg object-contain bg-slate-100 border border-slate-200" />
+                      <button type="button" onClick={() => { 
+                         const newUrls = [...filePreviewUrls]; newUrls.splice(idx, 1); setFilePreviewUrls(newUrls);
+                         const newFiles = [...selectedFiles]; newFiles.splice(idx, 1); setSelectedFiles(newFiles);
+                         if(newUrls.length === 0) setFileType('text');
+                      }} className="absolute -top-2 -right-2 bg-white rounded-full shadow-md p-1">
+                         <X className="w-3 h-3 text-red-500" />
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
+              {filePreviewUrls.length > 0 && fileType === 'pdf' && (
+                 <div className="mt-2 p-2 bg-red-50 rounded-xl border border-red-100 flex items-center justify-between">
+                    <span className="text-sm text-red-600 font-bold truncate"><FileText className="w-4 h-4 inline mr-1" />{filePreviewUrls[0]}</span>
+                    <button type="button" onClick={() => { setSelectedFiles([]); setFilePreviewUrls([]); setFileType('text'); }}><X className="w-4 h-4 text-red-500" /></button>
+                 </div>
+              )}
+
               <textarea placeholder="내용을 적어주세요." className="w-full px-4 py-3 border rounded-xl h-32 resize-none focus:ring-2 focus:ring-blue-400 focus:outline-none bg-slate-50" value={newContent} onChange={e => setNewContent(e.target.value)} required />
               {submitError && <div className="p-3 bg-red-50 text-red-600 text-sm rounded-xl border border-red-100">⚠️ {submitError}</div>}
               <button type="submit" disabled={isCompressing} className={`w-full text-white font-bold py-3 rounded-xl transition shadow-md ${isCompressing ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'}`}>알림장에 등록하기</button>
@@ -1155,13 +1199,31 @@ export default function App() {
               <label className="block w-full cursor-pointer">
                 <div className="w-full px-4 py-10 border-2 border-dashed border-green-300 rounded-xl bg-green-50 hover:bg-green-100 flex flex-col items-center justify-center">
                   <Camera className="w-10 h-10 text-green-400 mb-2" />
-                  <span className="text-sm font-bold text-green-700">{isCompressing ? '사진 최적화 중...' : '여기를 눌러 사진 선택'}</span>
-                  <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} required disabled={isCompressing} />
+                  <span className="text-sm font-bold text-green-700">{isCompressing ? '사진 최적화 중...' : '여기를 눌러 사진 여러 장 선택'}</span>
+                  {/* multiple 속성 추가 */}
+                  <input type="file" multiple className="hidden" accept="image/*" onChange={handleFileChange} required disabled={isCompressing} />
                 </div>
               </label>
-              {filePreviewUrl && <div className="w-full rounded-xl overflow-hidden bg-slate-100 flex justify-center"><img src={filePreviewUrl} alt="미리보기" className="max-h-48 object-contain" /></div>}
+
+              {/* 사진첩 업로드 사진들 미리보기 */}
+              {filePreviewUrls.length > 0 && (
+                <div className="mt-2 flex space-x-2 overflow-x-auto pb-2" style={{scrollbarWidth: 'none'}}>
+                  {filePreviewUrls.map((url, idx) => (
+                    <div key={idx} className="relative inline-block flex-shrink-0">
+                      <img src={url} alt={`미리보기 ${idx+1}`} className="h-24 w-auto rounded-lg object-contain bg-slate-100 border border-slate-200" />
+                      <button type="button" onClick={() => { 
+                         const newUrls = [...filePreviewUrls]; newUrls.splice(idx, 1); setFilePreviewUrls(newUrls);
+                         const newFiles = [...selectedFiles]; newFiles.splice(idx, 1); setSelectedFiles(newFiles);
+                      }} className="absolute -top-2 -right-2 bg-white rounded-full shadow-md p-1">
+                         <X className="w-3 h-3 text-red-500" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {submitError && <div className="p-3 bg-red-50 text-red-600 text-sm rounded-xl border border-red-100">⚠️ {submitError}</div>}
-              <button type="submit" disabled={isCompressing || !filePreviewUrl} className={`w-full text-white font-bold py-3 rounded-xl transition shadow-md ${(isCompressing || !filePreviewUrl) ? 'bg-slate-400 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'}`}>사진첩에 올리기</button>
+              <button type="submit" disabled={isCompressing || filePreviewUrls.length === 0} className={`w-full text-white font-bold py-3 rounded-xl transition shadow-md ${(isCompressing || filePreviewUrls.length === 0) ? 'bg-slate-400 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'}`}>사진첩에 올리기</button>
             </form>
           </div>
         </div>
